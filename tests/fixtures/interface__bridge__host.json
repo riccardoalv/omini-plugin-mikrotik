@@ -1,0 +1,6 @@
+[
+{".id":"*1","mac-address":"48:A9:8A:11:22:02","on-interface":"bridge","bridge":"bridge","vid":"1","local":"true","dynamic":"false","external":"false","invalid":"false"},
+{".id":"*2","mac-address":"AA:BB:CC:00:00:01","on-interface":"ether2","bridge":"bridge","vid":"1","local":"false","dynamic":"true","external":"false","invalid":"false"},
+{".id":"*3","mac-address":"AA:BB:CC:00:00:02","on-interface":"sfp-sfpplus1","bridge":"bridge","vid":"20","local":"false","dynamic":"true","external":"false","invalid":"false"},
+{".id":"*4","mac-address":"AA:BB:CC:00:00:03","on-interface":"wifi1","bridge":"bridge","vid":"1","local":"false","dynamic":"true","external":"false","invalid":"false"}
+]

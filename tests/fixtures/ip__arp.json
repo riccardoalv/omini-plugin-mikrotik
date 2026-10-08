@@ -1,0 +1,5 @@
+[
+{".id":"*1","address":"192.168.88.10","mac-address":"AA:BB:CC:00:00:01","interface":"bridge","status":"reachable","dynamic":"true","complete":"true","invalid":"false","disabled":"false","published":"false","DHCP":"true"},
+{".id":"*2","address":"192.168.88.11","interface":"bridge","status":"failed","dynamic":"true","complete":"false","invalid":"false","disabled":"false"},
+{".id":"*3","address":"203.0.113.1","mac-address":"00:11:22:33:44:55","interface":"ether1","status":"stale","dynamic":"true","complete":"true","invalid":"false","disabled":"false"}
+]

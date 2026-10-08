@@ -1,0 +1,4 @@
+[
+{".id":"*1","interface":"sfp-sfpplus1,bridge","address":"192.168.88.2","address4":"192.168.88.2","mac-address":"48:A9:8A:99:00:01","identity":"rack-switch","platform":"MikroTik","version":"7.15.3 (stable)","unpack":"none","age":"20s","uptime":"3d","software-id":"ABCD-1234","board":"CRS309-1G-8S+","ipv6":"false","interface-name":"sfp-sfpplus1","system-description":"MikroTik RouterOS 7.15.3 (stable) CRS309-1G-8S+","system-caps":"bridge,router","system-caps-enabled":"bridge,router","discovered-by":"mndp,lldp"},
+{".id":"*2","interface":"ether2,bridge","address":"192.168.88.30","mac-address":"AA-BB-CC-00-00-30","identity":"","platform":"","interface-name":"Gi0/1","system-description":"Cisco IOS Software","discovered-by":"cdp"}
+]

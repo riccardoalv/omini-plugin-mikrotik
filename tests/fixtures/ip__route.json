@@ -1,0 +1,6 @@
+[
+{".id":"*80000001","dst-address":"0.0.0.0/0","gateway":"203.0.113.1","immediate-gw":"203.0.113.1%ether1","distance":"1","scope":"30","target-scope":"10","routing-table":"main","vrf-interface":"ether1","active":"true","dynamic":"true","dhcp":"true","disabled":"false","inactive":"false"},
+{".id":"*80000002","dst-address":"192.168.88.0/24","gateway":"bridge","immediate-gw":"bridge","distance":"0","routing-table":"main","active":"true","dynamic":"true","connect":"true","disabled":"false"},
+{".id":"*80000003","dst-address":"0.0.0.0/0","gateway":"198.51.100.1","distance":"2","routing-table":"main","active":"false","static":"true","comment":"Backup LTE","disabled":"false","inactive":"true"},
+{".id":"*80000004","dst-address":"0.0.0.0/0","gateway":"10.9.0.1","routing-table":"vpn","active":"true","static":"true","disabled":"false"}
+]

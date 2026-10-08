@@ -1,0 +1,4 @@
+[
+{".id":"*1","bridge":"bridge","vlan-ids":"20","tagged":"bridge,sfp-sfpplus1","untagged":"office","current-tagged":"bridge,sfp-sfpplus1","current-untagged":"office","dynamic":"false","disabled":"false"},
+{".id":"*2","bridge":"bridge","vlan-ids":"30-31","tagged":"sfp-sfpplus1","untagged":"","current-tagged":"sfp-sfpplus1","current-untagged":"","dynamic":"false","disabled":"false"}
+]

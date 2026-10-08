@@ -1,0 +1,6 @@
+[
+{".id":"*0","interface":"ether2","bridge":"bridge","pvid":"1","frame-types":"admit-all","hw":"true","disabled":"false","inactive":"false"},
+{".id":"*1","interface":"office","bridge":"bridge","pvid":"20","frame-types":"admit-only-untagged-and-priority-tagged","hw":"true","disabled":"false","inactive":"true"},
+{".id":"*2","interface":"sfp-sfpplus1","bridge":"bridge","pvid":"1","hw":"true","disabled":"false","inactive":"false"},
+{".id":"*3","interface":"wifi1","bridge":"bridge","pvid":"1","hw":"false","disabled":"false","inactive":"false"}
+]

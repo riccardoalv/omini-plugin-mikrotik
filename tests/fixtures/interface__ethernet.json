@@ -1,0 +1,6 @@
+[
+{".id":"*1","name":"ether1","default-name":"ether1","auto-negotiation":"true","speed":"1G-baseT-full","advertise":"10M-baseT-half,10M-baseT-full,100M-baseT-half,100M-baseT-full,1G-baseT-half,1G-baseT-full,2.5G-baseT","mac-address":"48:A9:8A:11:22:01","disabled":"false","running":"true"},
+{".id":"*2","name":"ether2","default-name":"ether2","auto-negotiation":"true","speed":"1G-baseT-full","mac-address":"48:A9:8A:11:22:02","disabled":"false","running":"true"},
+{".id":"*3","name":"office","default-name":"ether3","auto-negotiation":"true","speed":"1G-baseT-full","mac-address":"48:A9:8A:11:22:03","disabled":"false","running":"false"},
+{".id":"*9","name":"sfp-sfpplus1","default-name":"sfp-sfpplus1","auto-negotiation":"false","speed":"10G-baseSR-LR","mac-address":"48:A9:8A:11:22:09","disabled":"false","running":"true"}
+]

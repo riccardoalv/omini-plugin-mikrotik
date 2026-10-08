@@ -1,0 +1,5 @@
+[
+{".id":"*1","address":"192.168.88.10","mac-address":"AA:BB:CC:00:00:01","client-id":"1:aa:bb:cc:0:0:1","address-lists":"","server":"defconf","dhcp-option":"","status":"bound","expires-after":"9m57s","last-seen":"3s","active-address":"192.168.88.10","active-mac-address":"AA:BB:CC:00:00:01","active-client-id":"1:aa:bb:cc:0:0:1","active-server":"defconf","host-name":"laptop","radius":"false","dynamic":"true","blocked":"false","disabled":"false"},
+{".id":"*2","address":"192.168.88.20","mac-address":"AA:BB:CC:00:00:04","server":"defconf","status":"waiting","last-seen":"1d","host-name":"old-phone","dynamic":"false","disabled":"false"},
+{".id":"*3","address":"192.168.88.5","mac-address":"AA:BB:CC:00:00:03","server":"defconf","status":"bound","expires-after":"1h","active-address":"192.168.88.5","active-mac-address":"AA:BB:CC:00:00:03","dynamic":"false","disabled":"false","comment":"Phone"}
+]

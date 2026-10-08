@@ -1,0 +1,6 @@
+[
+{"name":"ether1","status":"link-ok","auto-negotiation":"done","rate":"2.5Gbps","full-duplex":"true","tx-flow-control":"false","rx-flow-control":"false","advertising":"10M-baseT-half,10M-baseT-full,100M-baseT-half,100M-baseT-full,1G-baseT-half,1G-baseT-full,2.5G-baseT","link-partner-advertising":"2.5G-baseT"},
+{"name":"ether2","status":"link-ok","auto-negotiation":"done","rate":"1Gbps","full-duplex":"true"},
+{"name":"office","status":"no-link","auto-negotiation":"incomplete"},
+{"name":"sfp-sfpplus1","status":"link-ok","auto-negotiation":"disabled","rate":"10Gbps","full-duplex":"true","sfp-module-present":"true","sfp-rx-loss":"false","sfp-tx-fault":"false","sfp-type":"SFP/SFP+/SFP28/SFP56","sfp-connector-type":"LC","sfp-link-length-om3":"300m","sfp-vendor-name":"Mikrotik","sfp-vendor-part-number":"S+85DLC03D","sfp-vendor-revision":"1.0","sfp-vendor-serial":"SG85M31401687","sfp-manufacturing-date":"21-06-01","sfp-wavelength":"850nm","sfp-temperature":"33C","sfp-supply-voltage":"3.237V","sfp-tx-bias-current":"6mA","sfp-tx-power":"-2.5dBm","sfp-rx-power":"-3.1dBm"}
+]

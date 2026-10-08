@@ -1,0 +1,10 @@
+[
+{".id":"*1","name":"ether1","default-name":"ether1","type":"ether","mtu":"1500","actual-mtu":"1500","mac-address":"48:A9:8A:11:22:01","running":"true","disabled":"false","comment":"ISP","rx-byte":"98765432100","tx-byte":"12345678900","rx-packet":"1","tx-packet":"1","rx-error":"0","tx-error":"0","rx-drop":"0","tx-drop":"0","link-downs":"1","last-link-up-time":"2026-10-01 10:00:00"},
+{".id":"*2","name":"ether2","default-name":"ether2","type":"ether","mac-address":"48:A9:8A:11:22:02","running":"true","disabled":"false","rx-byte":"5000000","tx-byte":"7000000","rx-error":"2","tx-error":"0"},
+{".id":"*3","name":"office","default-name":"ether3","type":"ether","mac-address":"48:A9:8A:11:22:03","running":"false","disabled":"false","rx-byte":"0","tx-byte":"0","rx-error":"0","tx-error":"0"},
+{".id":"*9","name":"sfp-sfpplus1","default-name":"sfp-sfpplus1","type":"ether","mac-address":"48:A9:8A:11:22:09","running":"true","disabled":"false","comment":"Uplink to the rack","rx-byte":"111","tx-byte":"222","rx-error":"0","tx-error":"0"},
+{".id":"*A","name":"bridge","type":"bridge","mac-address":"48:A9:8A:11:22:02","running":"true","disabled":"false","rx-byte":"6000","tx-byte":"8000","rx-error":"0","tx-error":"0"},
+{".id":"*B","name":"vlan20","type":"vlan","mac-address":"48:A9:8A:11:22:02","running":"true","disabled":"false","comment":"IoT","rx-byte":"300","tx-byte":"400","rx-error":"0","tx-error":"0"},
+{".id":"*C","name":"wifi1","default-name":"wifi1","type":"wifi","mac-address":"48:A9:8A:11:22:10","running":"true","disabled":"false","rx-byte":"900","tx-byte":"800","rx-error":"0","tx-error":"0"},
+{".id":"*D","name":"lo","type":"loopback","mac-address":"00:00:00:00:00:00","running":"true","disabled":"false","rx-byte":"0","tx-byte":"0","rx-error":"0","tx-error":"0"}
+]
