@@ -58,6 +58,12 @@ class Client:
         (``/interface/ethernet/monitor`` with ``once``)."""
         return self._send("POST", path, body)
 
+    def patch(self, path: str, body: dict[str, Any]) -> Any:
+        """Sets properties of one item, e.g. ``/interface/ethernet/*1`` with
+        ``{"disabled": "true"}`` (the console's ``set``): the properties not
+        sent stay as they are. Used only to apply a change Omini asked for."""
+        return self._send("PATCH", path, body)
+
     def _send(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         try:
             r = self.http.request(method, path, json=body)
@@ -69,12 +75,13 @@ class Client:
             raise PluginError(f"request to {self.base} failed: {e}") from e
         if r.status_code == 401:
             raise PluginError("RouterOS rejected the username or password")
-        if r.status_code == 403:
-            raise Forbidden(path)
+        detail = error_detail(r)
+        if r.status_code == 403 or "permission" in detail.lower():
+            raise Forbidden(path, detail)
         if r.status_code in (400, 404):
             # 400 is also what RouterOS answers for a menu this version lacks
             # ("no such command or directory").
-            raise NotFound(path)
+            raise NotFound(path, detail)
         if r.status_code >= 400:
             raise PluginError(f"RouterOS answered {r.status_code} for {path}")
         if not r.content:
@@ -86,3 +93,16 @@ class Client:
                 f"{self.base} did not answer with JSON: is it a RouterOS v7 address "
                 "with the www-ssl service enabled?"
             ) from e
+
+
+def error_detail(r: httpx.Response) -> str:
+    """The ``detail`` (else ``message``) of a RouterOS error answer, or ''."""
+    if r.status_code < 400:
+        return ""
+    try:
+        body = r.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    return str(body.get("detail") or body.get("message") or "")

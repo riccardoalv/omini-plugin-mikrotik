@@ -13,13 +13,17 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 class FakeRouterOS:
     """Answers like a RouterOS 7.15 REST API, from the JSON files in fixtures/
-    (``ip__arp.json`` is ``/rest/ip/arp``). Only GETs and the read-only
-    ethernet monitor POST are accepted: anything else fails the test."""
+    (``ip__arp.json`` is ``/rest/ip/arp``). Only GETs, the read-only
+    ethernet monitor POST and PATCHes of a port's ``disabled`` property (a
+    change Omini asked for) are accepted: anything else fails the test."""
 
     def __init__(self):
         self.routes = {}
         self.forbidden = set()
         self.calls = []
+        self.patches = []  # (path, body) of every PATCH taken
+        self.read_only = False  # the user's group has no write policy
+        self.ignore_changes = False  # answers 200 to a PATCH but changes nothing
         for f in FIXTURES.glob("*.json"):
             self.routes["/rest/" + f.stem.replace("__", "/")] = json.loads(f.read_text())
         self.auth = ("omini", "secret")
@@ -36,6 +40,8 @@ class FakeRouterOS:
             asked = body["numbers"].split(",")
             rows = [r for r in self.routes[path] if r["name"] in asked]
             return httpx.Response(200, json=rows)
+        if request.method == "PATCH":
+            return self.patch(path, json.loads(request.content))
         assert request.method == "GET", f"{request.method} {path}"
         if any(path.startswith(p) for p in self.forbidden):
             return httpx.Response(
@@ -51,6 +57,28 @@ class FakeRouterOS:
                 },
             )
         return httpx.Response(200, json=self.routes[path])
+
+    def patch(self, path: str, body: dict) -> httpx.Response:
+        menu, _, item = path.rpartition("/")
+        assert menu == "/rest/interface/ethernet", path
+        assert set(body) == {"disabled"}, body  # nothing else of the port is touched
+        if self.read_only:
+            return httpx.Response(
+                403,
+                json={"error": 403, "message": "Forbidden", "detail": "not enough permissions (9)"},
+            )
+        row = next((r for r in self.routes[menu] if r[".id"] == item), None)
+        if row is None:
+            return httpx.Response(404, json={"error": 404, "message": "Not Found"})
+        self.patches.append((path, body))
+        if not self.ignore_changes:
+            row.update(body)
+            for r in self.routes["/rest/interface"]:
+                if r.get("name") == row["name"]:
+                    r.update(body)
+                    if body["disabled"] == "true":
+                        r["running"] = "false"
+        return httpx.Response(200, json=row)
 
 
 @pytest.fixture

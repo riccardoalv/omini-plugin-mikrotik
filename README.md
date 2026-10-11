@@ -1,6 +1,6 @@
 # omini-plugin-mikrotik
 
-[Omini](https://github.com/riccardoalv/omini) plugin for **MikroTik RouterOS** routers, switches and access points, through the official RouterOS v7 [REST API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API). Read-only: it never changes the device's configuration and never starts an update check.
+[Omini](https://github.com/riccardoalv/omini) plugin for **MikroTik RouterOS** routers, switches and access points, through the official RouterOS v7 [REST API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API). It reads the device and, when you ask from Omini, enables or disables an Ethernet port; it changes nothing else and never starts an update check.
 
 > **Experimental.** This plugin was built from MikroTik's documentation and tested against answers shaped like the documented ones, **not on real hardware** yet. Reports from MikroTik owners (and anonymized answers for the test fixtures) are welcome.
 
@@ -23,21 +23,33 @@
 
 Role: **router** when the device has a default route; otherwise **ap** if it has Wi-Fi interfaces, else **switch**.
 
+## What it changes
+
+**Enable or disable a port** (`port.enabled`), from the port's card in Omini, on Ethernet ports (`/interface/ethernet`: `ether*`, `sfp*`, `qsfp*`, renamed or not). The plugin:
+
+1. reads `GET /rest/interface/ethernet` to find the port by name and its `.id` (nothing is sent if the port is already in the state asked for);
+2. sends `PATCH /rest/interface/ethernet/<.id>` with `{"disabled": "true"}` (disable) or `{"disabled": "false"}` (enable): the console's `/interface/ethernet set <port> disabled=yes|no`. Only `disabled` is sent; speed, auto-negotiation, comment, PoE and the port's bridge membership stay as they are;
+3. reads `GET /rest/interface/ethernet` again and fails with an error if the port's `disabled` is not what was asked;
+4. reads the device again (the same requests as a collection) for the map.
+
+RouterOS has no separate saved configuration: a change is kept across reboots as soon as it is applied, so there is no save step. Bridges, VLANs, bonds and other non-Ethernet interfaces cannot be changed from Omini. If the user's group lacks the `write` policy, RouterOS refuses the change and Omini shows which policy to add; the map keeps working.
+
 ## Requirements
 
 - **RouterOS 7.1 or later** (the REST API does not exist on RouterOS 6).
 - The **www-ssl** service enabled, with a certificate (the REST API is served by the web server). Plain HTTP (`www`) also works but sends the password unencrypted: use it only on a trusted network.
 
-## Create a read-only user
+## Create a user
 
 Run in a RouterOS terminal (WinBox → New Terminal, or SSH):
 
 ```routeros
-# 1. A group that can only read, through the API and REST API.
-/user group add name=omini-read policy=read,api,rest-api comment="Omini (read-only)"
+# 1. A group that reads and can change settings (write: to enable and
+#    disable ports), through the API and REST API only.
+/user group add name=omini policy=read,write,api,rest-api comment="Omini"
 
 # 2. A user in that group. Restrict "address" to the Omini host's IP.
-/user add name=omini group=omini-read password="a-long-random-password" address=192.168.88.10/32
+/user add name=omini group=omini password="a-long-random-password" address=192.168.88.10/32
 
 # 3. HTTPS for the REST API (skip if www-ssl already has a certificate).
 /certificate add name=omini-https common-name=router.lan days-valid=3650
@@ -45,7 +57,11 @@ Run in a RouterOS terminal (WinBox → New Terminal, or SSH):
 /ip service set www-ssl certificate=omini-https disabled=no
 ```
 
-The group has no `write`, `policy`, `reboot`, `test`, `sensitive` or login policies other than `api` and `rest-api` ([user group policies](https://help.mikrotik.com/docs/spaces/ROS/pages/8978504/User)). If your RouterOS version does not offer the `rest-api` policy, create the group with `read,api` (not verified on hardware).
+The group has no `policy`, `reboot`, `test`, `sensitive`, `password` or login policies other than `api` and `rest-api` ([user group policies](https://help.mikrotik.com/docs/spaces/ROS/pages/8978504/User)). The plugin only ever writes a port's `disabled` property (see [What it changes](#what-it-changes)).
+
+**Read-only instead:** create the group with `policy=read,api,rest-api`. The map works the same; enabling or disabling a port then fails with a message saying the group needs the `write` policy (add it later with `/user group set omini policy=read,write,api,rest-api`).
+
+If your RouterOS version does not offer the `rest-api` policy, leave it out (not verified on hardware).
 
 Then, in Omini, **Integrations → Add → MikroTik RouterOS**:
 
@@ -60,7 +76,7 @@ Then, in Omini, **Integrations → Add → MikroTik RouterOS**:
 
 ## How it works
 
-Every request is a `GET` to `https://<router>/rest/<menu>` with HTTP Basic authentication, except one: the Ethernet **monitor** is a console command, which the REST API runs with a `POST`. The plugin sends `POST /rest/interface/ethernet/monitor` with `{"numbers": "<every ethernet port>", "once": ""}`: `once` reads the current state a single time and returns. It changes nothing. RouterOS returns every value as a string (`"true"`, `"1Gbps"`, `"1w2d3h"`); the plugin parses them and leaves anything it cannot parse empty.
+A collection only reads: every request is a `GET` to `https://<router>/rest/<menu>` with HTTP Basic authentication, except one: the Ethernet **monitor** is a console command, which the REST API runs with a `POST`. The plugin sends `POST /rest/interface/ethernet/monitor` with `{"numbers": "<every ethernet port>", "once": ""}`: `once` reads the current state a single time and returns. It changes nothing. RouterOS returns every value as a string (`"true"`, `"1Gbps"`, `"1w2d3h"`); the plugin parses them and leaves anything it cannot parse empty.
 
 | Menu | Read | Docs |
 |---|---|---|
@@ -101,6 +117,8 @@ Mapping notes:
   - whether the `read` policy is enough to run the monitor through REST on every version (if not, link speed and SFP diagnostics are skipped, the rest still works);
   - the property names of `/interface/wifi` in REST (`configuration.ssid`, `channel.band`) when the SSID is set through a configuration profile — the registration table's own `ssid`/`band` are used first;
   - the error status RouterOS returns for a menu the user's group cannot read (403 is treated as "no permission", 400/404 as "not available").
+  - the status and message RouterOS returns when a group without `write` sends a `PATCH` (a 403, or a 400 whose detail mentions permissions, is reported as the missing `write` policy);
+  - that `PATCH /rest/interface/ethernet/<.id>` with only `disabled` leaves every other property of the port untouched (it is the documented equivalent of `set`; tested against the emulator only).
 - **CAPsMAN:** clients of APs managed by CAPsMAN (`/caps-man/registration-table`) are not read yet; add each AP as its own integration.
 - **Gateway latency / loss:** RouterOS has no per-gateway latency in its route table; gateways show only up/down (from the route's `active` flag).
 - **IPv6** routes and leases are not read.

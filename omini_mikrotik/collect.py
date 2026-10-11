@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 from omini_sdk import (
     ArpEntry,
+    Change,
     Config,
     Device,
     DhcpLease,
@@ -390,7 +391,8 @@ def build_interfaces(
     for r in rows:
         name = r["name"]
         kind = interface_type(str(r.get("type") or ""))
-        up = bool(flag(r.get("running"))) and not flag(r.get("disabled"))
+        disabled = flag(r.get("disabled"))
+        up = bool(flag(r.get("running"))) and not disabled
         mon = monitor.get(name) or {}
         factory = r.get("default-name") or (ethernet.get(name) or {}).get("default-name") or name
         speed = speeds.get(name)
@@ -426,6 +428,7 @@ def build_interfaces(
                 parent=parent_of(name),
                 members=port_members,
                 up=up,
+                enabled=None if disabled is None else not disabled,
                 speed_mbps=speed if up and speed else None,
                 duplex=duplex,
                 rx_bytes=counter(r.get("rx-byte")),
@@ -913,6 +916,62 @@ def collect(cfg: Config) -> list[Device]:
         return [device]
     finally:
         c.close()
+
+
+# --- changes -------------------------------------------------------------------
+
+WRITE_POLICY = (
+    "the RouterOS user's group lacks the write policy: add it "
+    "(/user group set <group> policy=read,write,api,rest-api) to let Omini "
+    "enable and disable ports"
+)
+
+
+def ethernet_port(c: Client, name: str) -> dict[str, Any] | None:
+    """The port's row of /interface/ethernet (physical ports only), by name."""
+    try:
+        rows = as_list(c.get("/interface/ethernet"))
+    except Forbidden as e:
+        raise PluginError("the RouterOS user cannot read /interface/ethernet") from e
+    except NotFound as e:
+        raise PluginError("this device has no /interface/ethernet menu") from e
+    return next((r for r in rows if r.get("name") == name), None)
+
+
+def apply(cfg: Config, change: Change) -> list[Device]:
+    """Enables or disables a port (port.enabled): sets only the port's
+    ``disabled`` property (PATCH /interface/ethernet/<id>), reads the port
+    again to check RouterOS took it, and returns the device as read after
+    the change. RouterOS saves every change as it is made: there is no
+    separate save step."""
+    if change.kind != "port.enabled" or not isinstance(change.value, bool):
+        raise PluginError(f"this plugin cannot apply {change.kind} with value {change.value!r}")
+    name = change.port or ""
+    c = client_from(cfg)
+    try:
+        port = ethernet_port(c, name)
+        if port is None or not port.get(".id"):
+            raise PluginError(f"the device has no Ethernet port named {name or '(none)'}")
+        path = "/interface/ethernet/" + str(port[".id"])
+        disabled = flag(port.get("disabled"))
+        if disabled is None:
+            raise PluginError(
+                f"RouterOS did not say whether {name} is enabled: nothing was changed"
+            )
+        if disabled == change.value:
+            try:
+                c.patch(path, {"disabled": "false" if change.value else "true"})
+            except Forbidden as e:
+                raise PluginError(WRITE_POLICY) from e
+            except NotFound as e:
+                detail = e.args[1] if len(e.args) > 1 and e.args[1] else "bad request"
+                raise PluginError(f"RouterOS refused to change {name}: {detail}") from e
+            after = ethernet_port(c, name)
+            if after is None or flag(after.get("disabled")) is not (not change.value):
+                raise PluginError(f"RouterOS did not apply the change to {name}")
+    finally:
+        c.close()
+    return collect(cfg)
 
 
 def test(cfg: Config) -> str:

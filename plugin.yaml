@@ -8,9 +8,12 @@ description: >-
   MikroTik routers, switches and access points through the RouterOS v7 REST
   API: ports with link speed, traffic, SFP diagnostics and VLANs, bridge MAC
   table, ARP, DHCP leases, MNDP/LLDP/CDP neighbors, Wi-Fi clients, default
-  gateways, CPU, memory, temperatures and pending updates. Read-only.
+  gateways, CPU, memory, temperatures and pending updates, and enables or
+  disables Ethernet ports (applied, then checked; RouterOS keeps it).
 author: Omini
 homepage: https://github.com/riccardoalv/omini-plugin-mikrotik
+changes:
+  - port.enabled
 fields:
   - key: url
     type: url
@@ -22,8 +25,8 @@ fields:
     label: Username
     required: true
     help: >-
-      A user in a read-only group (policy read, api, rest-api): see the
-      plugin's README.
+      A user whose group has the policies read, write, api and rest-api (write
+      is needed only to enable or disable ports): see the plugin's README.
   - key: password
     type: secret
     label: Password
