@@ -24,6 +24,8 @@ WRITABLE = {
     "/rest/ip/dhcp-server/lease",
     "/rest/ip/firewall/filter",
     "/rest/ip/firewall/address-list",
+    "/rest/ip/dns/static",
+    "/rest/ip/firewall/connection",
 }
 
 FORBIDDEN = {"error": 403, "message": "Forbidden", "detail": "not enough permissions (9)"}
@@ -47,6 +49,10 @@ class FakeRouterOS:
         self.ignore_changes = False  # answers 200 to a write but changes nothing
         self.fail = {}  # "METHOD /rest/path" → the detail of a 400 answer
         self.ids = itertools.count(0x100)
+        self.wol = []  # bodies of POST /tool/wol
+        self.export = (FIXTURES / "export.rsc").read_text()
+        self.executes = []  # bodies of POST /execute
+        self.execute_answers = {}  # as-string value → (status, body) instead of the export
         for f in FIXTURES.glob("*.json"):
             self.routes["/rest/" + f.stem.replace("__", "/")] = json.loads(f.read_text())
         self.auth = ("omini", "secret")
@@ -63,6 +69,21 @@ class FakeRouterOS:
             asked = body["numbers"].split(",")
             rows = [r for r in self.routes[path] if r["name"] in asked]
             return httpx.Response(200, json=rows)
+        if method == "POST" and path == "/rest/interface/bridge/monitor":
+            assert "once" in body  # read-only: never a monitor that keeps running
+            rows = [r for r in self.routes[path] if r["name"] == body["numbers"]]
+            return httpx.Response(200, json=rows)
+        if method == "POST" and path == "/rest/execute":
+            # Only the export: a read, with the user's policies (sensitive values left out).
+            assert body["script"] == "/export terse", body
+            assert "show-sensitive" not in body["script"]
+            self.executes.append(body)
+            if any(path.startswith(p) for p in self.forbidden):
+                return httpx.Response(403, json=FORBIDDEN)
+            status, answer = self.execute_answers.get(
+                body.get("as-string"), (200, {"ret": self.export})
+            )
+            return httpx.Response(status, json=answer)
         if method == "GET":
             if any(path.startswith(p) for p in self.forbidden):
                 return httpx.Response(403, json=FORBIDDEN)
@@ -95,6 +116,10 @@ class FakeRouterOS:
         self.writes.append((method, path, body))
         if method == "PATCH":
             self.patches.append((path, body))
+        if method == "POST" and path == "/rest/tool/wol":
+            assert set(body) == {"mac", "interface"}, body
+            self.wol.append(body)
+            return httpx.Response(200, json=[])
         if method == "POST" and path == "/rest/ip/dns/set":
             if not self.ignore_changes:
                 self.routes["/rest/ip/dns"].update(body)

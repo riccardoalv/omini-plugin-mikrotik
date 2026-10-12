@@ -74,10 +74,14 @@ def test_sfp_diagnostics(routeros, cfg):
     assert {i.name: i for i in rt.interfaces}["ether1"].transceiver is None
 
 
-def test_monitor_is_one_read_only_post(routeros, cfg):
+def test_monitors_are_the_only_posts(routeros, cfg):
     collect(cfg)
     posts = [c for c in routeros.calls if c[0] == "POST"]
-    assert posts == [("POST", "/rest/interface/ethernet/monitor")]
+    # Both read-only, with `once` (the fake asserts it): ports, then the bridge's STP.
+    assert posts == [
+        ("POST", "/rest/interface/ethernet/monitor"),
+        ("POST", "/rest/interface/bridge/monitor"),
+    ]
 
 
 def test_vlans(routeros, cfg):

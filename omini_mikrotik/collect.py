@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import ipaddress
+import re
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any, TypeVar
@@ -17,6 +18,7 @@ from omini_sdk import (
     ArpEntry,
     Change,
     Config,
+    ConfigBackup,
     Device,
     DhcpLease,
     FdbEntry,
@@ -25,6 +27,7 @@ from omini_sdk import (
     Interface,
     Neighbor,
     PluginError,
+    PortStp,
     PortVlans,
     Storage,
     Temperature,
@@ -34,7 +37,9 @@ from omini_sdk import (
     log,
 )
 
+from omini_mikrotik import backup as backup_mod
 from omini_mikrotik import networks as nets
+from omini_mikrotik import services
 from omini_mikrotik import vlans as vlans_mod
 from omini_mikrotik.client import Client, Forbidden, NotFound
 from omini_mikrotik.common import (
@@ -202,6 +207,67 @@ def read_interfaces(c: Client, missing: list[str]) -> dict[str, Any]:
     }
 
 
+STP_MODES = ("stp", "rstp", "mstp")
+STP_ROLES = {
+    "root": "root",
+    "designated": "designated",
+    "alternate": "alternate",
+    "backup": "backup",
+    "disabled": "disabled",
+}
+
+
+def port_stp(p: dict[str, Any]) -> PortStp | None:
+    """A bridge port's spanning tree role and state, as /interface/bridge/port
+    prints it: ``role`` (root-port, designated-port, alternate-port,
+    backup-port, disabled-port) and the ``forwarding`` and ``learning`` flags.
+    A state RouterOS does not say stays empty, except that alternate and
+    backup ports discard (blocking) by definition."""
+    role = STP_ROLES.get(str(p.get("role") or "").strip().lower().removesuffix("-port"))
+    if role is None:
+        return None
+    inactive = flag(p.get("inactive")) or str(p.get("status") or "") == "inactive"
+    forwarding, learning = flag(p.get("forwarding")), flag(p.get("learning"))
+    state: str | None = None
+    if role == "disabled" or inactive:
+        state = "disabled"
+    elif forwarding:
+        state = "forwarding"
+    elif learning:
+        state = "learning"
+    elif forwarding is False or role in ("alternate", "backup"):
+        state = "blocking"
+    return PortStp(state=state, role=role)
+
+
+def bridge_id(value: Any) -> str | None:
+    """'0x8000.48:A9:8A:11:22:02' (or '32768.48:A9:...') → '32768.48:a9:8a:11:22:02'."""
+    if not isinstance(value, str):
+        return None
+    m = re.fullmatch(r"\s*(0x[0-9a-fA-F]+|\d+)\.(\S+)\s*", value)
+    if not m:
+        return None
+    priority, address = int(m.group(1), 0), mac(m.group(2))
+    return f"{priority}.{address}" if address else None
+
+
+def stp_root(c: Client, bridges: list[dict[str, Any]]) -> str | None:
+    """The root bridge as the first bridge running STP sees it: one read-only
+    ``POST /interface/bridge/monitor`` with ``once``."""
+    b = next(
+        (
+            b
+            for b in bridges
+            if b.get("name") and str(b.get("protocol-mode") or "") in STP_MODES and enabled(b)
+        ),
+        None,
+    )
+    if b is None:
+        return None
+    rows = as_list(c.post("/interface/bridge/monitor", {"numbers": b["name"], "once": ""}))
+    return bridge_id(rows[0].get("root-bridge-id")) if rows else None
+
+
 def build_interfaces(
     raw: dict[str, Any], monitor: dict[str, dict[str, Any]], wan: set[str]
 ) -> list[Interface]:
@@ -212,14 +278,21 @@ def build_interfaces(
     filtering = {
         r.get("name") for r in raw["bridges"] if r.get("name") and flag(r.get("vlan-filtering"))
     }
+    stp_bridges = {
+        r.get("name") for r in raw["bridges"] if str(r.get("protocol-mode") or "") in STP_MODES
+    }
+    lag_of = {m: name for name, b in bonds.items() for m in names(b.get("slaves"))}
     members: dict[str, list[str]] = {}
     pvid: dict[str, int] = {}
+    stp: dict[str, PortStp] = {}
     vlan_ports: set[str] = set()  # ports whose VLANs Omini can change
     for p in raw["bridge_ports"]:
         port, bridge = p.get("interface"), p.get("bridge")
         if not port or not bridge or not enabled(p):
             continue
         members.setdefault(bridge, []).append(port)
+        if bridge in stp_bridges and (s := port_stp(p)) is not None:
+            stp[port] = s
         if bridge not in filtering:
             continue
         vlan_ports.add(port)
@@ -322,6 +395,8 @@ def build_interfaces(
                 vlan=vlan_id if vlan_id and 1 <= vlan_id <= 4094 else None,
                 vlans=port_vlans,
                 transceiver=transceiver(mon) if kind == "ethernet" else None,
+                stp=stp.get(name),
+                lag=lag_of.get(name),
             )
         )
     return out
@@ -721,15 +796,19 @@ def firmware(c: Client, info: dict[str, Any], board: dict[str, Any]) -> Firmware
 # --- plugin entry points --------------------------------------------------------------
 
 
-def device_key(ifaces: list[Interface], raw: list[dict[str, Any]], host: str) -> str:
-    """ether1's factory MAC (stable), else the lowest port MAC."""
-    for r in raw:
+def device_key(raw: list[dict[str, Any]], host: str) -> str:
+    """ether1's factory MAC (stable), else the lowest port MAC, else the lowest
+    MAC (from /interface)."""
+    rows = [r for r in raw if r.get("name")]
+    for r in rows:
         if r.get("default-name") == "ether1" and mac(r.get("mac-address")):
             return mac(r.get("mac-address")) or host
-    port_macs = sorted(i.mac for i in ifaces if i.mac and i.type == "ethernet")
+    port_macs = sorted(
+        m for r in rows if r.get("type") == "ether" and (m := mac(r.get("mac-address")))
+    )
     if port_macs:
         return port_macs[0]
-    macs = sorted(i.mac for i in ifaces if i.mac)
+    macs = sorted(m for r in rows if (m := mac(r.get("mac-address"))))
     return macs[0] if macs else host
 
 
@@ -754,6 +833,7 @@ def collect(cfg: Config) -> list[Device]:
         bridges: set[str] = set()
         vlans: list[Vlan] = []
         router: dict[str, Any] = {}
+        root: str | None = None
         if raw:
             known = {r.get("name") for r in raw["interfaces"] if r.get("name")}
             gws = gateways(routes, raw["addresses"], known)
@@ -767,6 +847,7 @@ def collect(cfg: Config) -> list[Device]:
             ifaces = build_interfaces(raw, monitor, wan)
             bridges = {i.name for i in ifaces if i.type == "bridge"}
             vlans = device_vlans(raw)
+            root = optional("bridge monitor", missing, lambda: stp_root(c, raw["bridges"]), None)
         now = datetime.now(timezone.utc)
         lease_rows = optional(
             "DHCP leases", missing, lambda: as_list(c.get("/ip/dhcp-server/lease")), None
@@ -787,7 +868,7 @@ def collect(cfg: Config) -> list[Device]:
             key=lambda ip: tuple(int(p) for p in ip.split(".")),
         )
         device = Device(
-            key=device_key(ifaces, raw["interfaces"] if raw else [], host),
+            key=device_key(raw["interfaces"] if raw else [], host),
             name=(identity.get("name") or "").strip() or host,
             host=host,
             role=role,
@@ -810,6 +891,8 @@ def collect(cfg: Config) -> list[Device]:
             gateways=gws or None,
             vlans=vlans or None,
             **router,
+            dns_records=optional("DNS names", missing, lambda: services.dns_records(c), []) or None,
+            stp_root=root,
             temperatures=optional("health", missing, lambda: temperatures(c), []) or None,
             storage=storage(info) or None,
             firmware=optional("updates", missing, lambda: firmware(c, info, board), None),
@@ -844,6 +927,8 @@ def router_networks(
     return {
         "networks": nets.networks(st) or None,
         "dhcp_reservations": nets.reservations(st) or None,
+        "dns_domain": services.dns_domain(st),
+        "paused": services.paused(st) or None,
     }
 
 
@@ -921,6 +1006,31 @@ def change_network(c: Client, j: Journal, change: Change, mgmt: str) -> None:
             raise PluginError(f"RouterOS did not remove the reservation of {m}")
 
 
+def change_service(c: Client, j: Journal, change: Change) -> None:
+    """dns.set, dns.delete, wol.send, pause.set, pause.delete (see services.py)."""
+    value = change.value if isinstance(change.value, dict) else None
+    if value is None:
+        raise PluginError(f"this plugin cannot apply {change.kind} with value {change.value!r}")
+    if change.kind == "dns.set":
+        services.dns_set(c, j, value)
+    elif change.kind == "dns.delete":
+        services.dns_delete(c, j, value)
+    elif change.kind == "wol.send":
+        services.wol_send(c, router_state(c), value)
+    elif change.kind == "pause.set":
+        ips = services.pause_set(j, router_state(c), value)
+        if not services.pause_matches(router_state(c), value, ips):
+            raise PluginError(f"RouterOS did not pause {value.get('mac')}")
+        services.cut_connections(c, ips)
+    else:
+        services.pause_delete(j, router_state(c), value)
+        if not services.pause_gone(router_state(c), value):
+            raise PluginError(f"RouterOS did not resume {value.get('mac')}")
+
+
+SERVICE_CHANGES = ("dns.set", "dns.delete", "wol.send", "pause.set", "pause.delete")
+
+
 def apply(cfg: Config, change: Change) -> list[Device]:
     """Applies one change, reads the device again to check it, undoes what
     it wrote if the device does not read back as asked, and returns the
@@ -930,7 +1040,9 @@ def apply(cfg: Config, change: Change) -> list[Device]:
     port.enabled: a port's ``disabled``. port.vlans, vlan.set, vlan.delete:
     the bridge's VLAN table and ports (see vlans.py). network.set,
     network.delete, reservation.set, reservation.delete: the router's VLAN
-    interfaces, addresses, DHCP and firewall (see networks.py)."""
+    interfaces, addresses, DHCP and firewall (see networks.py). dns.set,
+    dns.delete, wol.send, pause.set, pause.delete: /ip/dns/static,
+    /tool/wol, the omini_paused address list and its rule (see services.py)."""
     c = client_from(cfg)
     j = Journal(c)
     try:
@@ -949,6 +1061,8 @@ def apply(cfg: Config, change: Change) -> list[Device]:
             "reservation.delete",
         ):
             change_network(c, j, change, urlparse(c.base).hostname or "")
+        elif change.kind in SERVICE_CHANGES:
+            change_service(c, j, change)
         else:
             raise PluginError(f"this plugin cannot apply {change.kind}")
     except Exception:
@@ -957,6 +1071,18 @@ def apply(cfg: Config, change: Change) -> list[Device]:
     finally:
         c.close()
     return collect(cfg)
+
+
+def backup(cfg: Config) -> list[ConfigBackup]:
+    """The configuration as /export terse, without sensitive values or time stamp."""
+    c = client_from(cfg)
+    try:
+        resource(c)
+        rows = as_list(c.get("/interface"))
+        key = device_key(rows, urlparse(c.base).hostname or c.base)
+        return [ConfigBackup(device=key, format="text", content=backup_mod.export(c))]
+    finally:
+        c.close()
 
 
 def test(cfg: Config) -> str:

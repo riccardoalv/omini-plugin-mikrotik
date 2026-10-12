@@ -1,0 +1,6 @@
+[
+{".id":"*1001","protocol":"tcp","src-address":"192.168.88.10:51234","dst-address":"203.0.113.80:443","reply-src-address":"203.0.113.80:443","reply-dst-address":"203.0.113.10:51234","tcp-state":"established","timeout":"23h59m","seen-reply":"true","assured":"true","confirmed":"true","fasttrack":"true"},
+{".id":"*1002","protocol":"udp","src-address":"192.168.88.10:5353","dst-address":"192.168.88.1:53","timeout":"10s"},
+{".id":"*1003","protocol":"tcp","src-address":"192.168.88.11:40000","dst-address":"203.0.113.80:443","tcp-state":"established","timeout":"23h59m"},
+{".id":"*1004","protocol":"icmp","src-address":"192.168.88.10","dst-address":"203.0.113.1","timeout":"5s"}
+]

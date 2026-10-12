@@ -1,0 +1,8 @@
+[
+{".id":"*1","name":"router.lan","address":"192.168.88.1","ttl":"1d","dynamic":"false","disabled":"false"},
+{".id":"*2","name":"nas.lan","address":"192.168.88.20","type":"A","ttl":"1d","comment":"Omini","dynamic":"false","disabled":"false"},
+{".id":"*3","regexp":".*\\.ads\\.example\\.com","address":"0.0.0.0","type":"A","ttl":"1d","dynamic":"false","disabled":"false"},
+{".id":"*4","name":"www.lan","cname":"router.lan","type":"CNAME","ttl":"1d","dynamic":"false","disabled":"false"},
+{".id":"*5","name":"old.lan","address":"192.168.88.30","type":"A","ttl":"1d","dynamic":"false","disabled":"true"},
+{".id":"*6","name":"printer.lan","address":"fd00::30","type":"AAAA","ttl":"1d","dynamic":"false","disabled":"false"}
+]

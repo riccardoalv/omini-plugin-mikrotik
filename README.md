@@ -1,6 +1,6 @@
 # omini-plugin-mikrotik
 
-[Omini](https://github.com/riccardoalv/omini) plugin for **MikroTik RouterOS** routers, switches and access points, through the official RouterOS v7 [REST API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API). It reads the device and, when you ask from Omini, changes it: enables or disables an Ethernet port, sets a bridge port's VLANs and the bridge's VLANs, and creates, changes or removes a router's VLAN networks (interface, gateway, DHCP, access rules, mDNS) and DHCP reservations (see [What it changes](#what-it-changes)). It changes nothing else, never turns VLAN filtering on and never starts an update check.
+[Omini](https://github.com/riccardoalv/omini) plugin for **MikroTik RouterOS** routers, switches and access points, through the official RouterOS v7 [REST API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API). It reads the device and, when you ask from Omini, changes it: enables or disables an Ethernet port, sets a bridge port's VLANs and the bridge's VLANs, creates, changes or removes a router's VLAN networks (interface, gateway, DHCP, access rules, mDNS), DHCP reservations and local DNS names, pauses a device's internet and sends Wake-on-LAN packets (see [What it changes](#what-it-changes)). It also hands Omini the configuration as text for its history ([Backups](#configuration-backups)). It changes nothing else, never turns VLAN filtering on and never starts an update check.
 
 > **Experimental.** This plugin was built from MikroTik's documentation and tested against answers shaped like the documented ones, **not on real hardware** yet. Reports from MikroTik owners (and anonymized answers for the test fixtures) are welcome.
 
@@ -13,7 +13,10 @@
 | Pending updates: RouterOS (from the device's **own last check**) and RouterBOOT firmware | Health (*update pending*) |
 | Interfaces: name, comment, type, MAC, running, traffic and error counters | Ports on the map, traffic |
 | Ethernet link rate and duplex, **SFP diagnostics** (vendor, part, serial, wavelength, temperature, voltage, bias, TX/RX power) | Link speed, port front view (RJ45 / SFP / QSFP) |
-| Bridges and their ports, bonding members | Bridge members and speed |
+| Bridges and their ports, bonding members | Bridge members and speed; each bond member's LAG (`lag`), the bond itself is a `lag` port |
+| Bridge ports' spanning tree role and state, the root bridge (`POST /interface/bridge/monitor` with `once`) | STP on the map (blocked links drawn as standby), root bridge changes |
+| Local DNS names (`/ip/dns/static` A records), the DHCP `domain` | DNS names of fixed-address devices |
+| Paused devices (the `omini_paused` address list) | The pause mark on the map |
 | Bridge VLAN table (PVID, tagged ports), VLAN interfaces with their subnets | Port VLAN membership, VLAN list |
 | Bridge host table (MAC → port, VLAN) | Which client sits behind which port |
 | ARP table, bound DHCP leases | Clients and their names |
@@ -27,7 +30,7 @@ Role: **router** when the device has a default route; otherwise **ap** if it has
 
 Only what you ask from Omini, one change at a time. Every change is **applied, read back and checked**; if RouterOS refuses a step or does not read back as asked, the plugin **undoes the steps it already took** (newest first) and Omini shows the error. RouterOS keeps every change as soon as it is applied (there is no separate saved configuration), so there is no save step. RouterOS's own rollback (*safe mode*) belongs to a terminal session, which the REST API does not have: the plugin's undo takes its place.
 
-Writes use the REST API's `PUT` (the console's `add`), `PATCH` (`set`), `DELETE` (`remove`) and `POST` for two commands: `<menu>/add` with `place-before` (firewall rules) and `/ip/dns/set`.
+Writes use the REST API's `PUT` (the console's `add`), `PATCH` (`set`), `DELETE` (`remove`) and `POST` for three commands: `<menu>/add` with `place-before` (firewall rules), `/ip/dns/set` and `/tool/wol`.
 
 ### Enable or disable a port (`port.enabled`)
 
@@ -80,6 +83,33 @@ Rules that are none of these read as **custom**, and a network set to *custom* k
 
 A fixed address for a MAC is a **static lease** (`/ip/dhcp-server/lease`, `dynamic=no`): `PUT` with `mac-address`, `address`, the `server` of the network that holds the address and the name as `comment`; a MAC that already has one gets it changed (`PATCH`); removing it is `DELETE`. Omini shows the static leases as the router's reservations.
 
+### Local DNS names (`dns.set`, `dns.delete`)
+
+A name is a **static DNS entry** (`/ip/dns/static`) of type A, which the router answers to the clients that use it as their DNS server (`/ip/dns allow-remote-requests=yes`, the default configuration's setting; the plugin does not change it).
+
+- `dns.set` `{name, ip}`: a new name is `PUT /rest/ip/dns/static` with `name`, `address` and the comment `Omini`; a name already there gets its `address` changed (`PATCH`), and other A entries of the same name are removed, so a name has one address. The entries are read again to check the name answers that address.
+- `dns.delete` `{name}`: `DELETE` of every A entry with that name (a name that is not there is not an error).
+
+Omini shows every enabled A entry with a name (regexp, CNAME, AAAA, forward and disabled entries are left out) as the device's names, and the `domain` the DHCP server hands out (`/ip/dhcp-server/network`: the LAN's network, else the first one with a domain) as its local domain.
+
+### Wake-on-LAN (`wol.send`)
+
+`{mac, ip}`: `POST /rest/tool/wol` with `mac` and `interface`, the interface whose address's network holds `ip` (without `ip`: the LAN). It is the console's `/tool wol`; nothing is verified (a sleeping device does not answer), and Omini sees it come back online in the next rounds.
+
+### Pause a device's internet (`pause.set`, `pause.delete`)
+
+Only on a router (a device with a default route and a network of its own on the LAN side; not a switch whose default route is its management VLAN).
+
+- **The list:** each paused address is an entry of the firewall address list `omini_paused` (`/ip/firewall/address-list`), with the comment `Omini <mac> <name>`, which is how Omini knows which device it is. `pause.set` `{mac, ips, name}` adds the device's addresses and removes the ones it no longer has (when the device got another address); an address another entry held moves to this device.
+- **The rule:** one `/ip/firewall/filter` rule, `chain=forward src-address-list=omini_paused dst-address-list=!omini-private action=drop` (comment `Omini: paused devices`), added with `place-before` the **first rule of the forward chain**, before the default configuration's fasttrack and *accept established, related*, so that open connections are dropped too. `omini-private` is the list of private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) the networks' *internet only* access also uses, created when missing. A paused device still reaches the router (DNS, DHCP) and every private network: the NAS, the printer.
+- **Open connections:** after the change is verified, the device's connections are removed from the connection tracking table (`GET /rest/ip/firewall/connection` with `.proplist=.id,src-address`, then `DELETE` of each one from its addresses), best effort: one that fails is skipped, the rule drops what comes next.
+- `pause.delete` `{mac}`: removes the device's entries; the rule goes with the last entry (`omini-private` stays: networks use it).
+- The router's own addresses cannot be paused. Omini refuses to pause its own host, the router and network devices before asking the plugin.
+
+### Configuration backups
+
+Omini keeps a history of the configuration (it never restores it). The plugin's `backup` runs **`/export terse`** (one line per item) as a script: `POST /rest/execute` with `{"script": "/export terse", "as-string": ""}` (and `"as-string": "true"` if RouterOS refuses the first form), which answers the export's text as `{"ret": "..."}`. RouterOS 7 leaves **sensitive values** (passwords, keys, secrets) out of an export unless `show-sensitive` is given, and the plugin never gives it. The first line (`# 2024-11-29 14:17:45 by RouterOS 7.16.2`, the time of the export) is dropped, so two backups of an unchanged configuration are equal. The content is never logged.
+
 ## Requirements
 
 - **RouterOS 7.1 or later** (the REST API does not exist on RouterOS 6).
@@ -103,7 +133,7 @@ Run in a RouterOS terminal (WinBox → New Terminal, or SSH):
 /ip service set www-ssl certificate=omini-https disabled=no
 ```
 
-The group has no `policy`, `reboot`, `test`, `sensitive`, `password` or login policies other than `api` and `rest-api` ([user group policies](https://help.mikrotik.com/docs/spaces/ROS/pages/8978504/User)). The `write` policy covers every change (ports, bridge VLANs, VLAN interfaces, addresses, DHCP, firewall rules and address lists, the mDNS repeater): RouterOS has no finer policy for these menus. The plugin only writes what a change you ask for needs (see [What it changes](#what-it-changes)).
+The group has no `policy`, `reboot`, `test`, `sensitive`, `password` or login policies other than `api` and `rest-api` ([user group policies](https://help.mikrotik.com/docs/spaces/ROS/pages/8978504/User)). The `write` policy covers every change (ports, bridge VLANs, VLAN interfaces, addresses, DHCP, firewall rules, address lists and connections, DNS names, the mDNS repeater, Wake-on-LAN): RouterOS has no finer policy for these menus. Without `sensitive`, the configuration backup leaves passwords and keys out (RouterOS hides them in an export for a group without it, as well as without `show-sensitive`). The backup runs `/export` through `/execute`, a script: RouterOS runs it with the group's policies (`read` is what an export needs; whether `/execute` itself needs `write` is not verified, the group above has it). The plugin only writes what a change you ask for needs (see [What it changes](#what-it-changes)).
 
 **Read-only instead:** create the group with `policy=read,api,rest-api`. The map works the same; every change then fails with a message saying the group needs the `write` policy (add it later with `/user group set omini policy=read,write,api,rest-api`).
 
@@ -122,7 +152,7 @@ Then, in Omini, **Integrations → Add → MikroTik RouterOS**:
 
 ## How it works
 
-A collection only reads: every request is a `GET` to `https://<router>/rest/<menu>` with HTTP Basic authentication, except one: the Ethernet **monitor** is a console command, which the REST API runs with a `POST`. The plugin sends `POST /rest/interface/ethernet/monitor` with `{"numbers": "<every ethernet port>", "once": ""}`: `once` reads the current state a single time and returns. It changes nothing. RouterOS returns every value as a string (`"true"`, `"1Gbps"`, `"1w2d3h"`); the plugin parses them and leaves anything it cannot parse empty.
+A collection only reads: every request is a `GET` to `https://<router>/rest/<menu>` with HTTP Basic authentication, except two: the Ethernet and bridge **monitors** are console commands, which the REST API runs with a `POST`. The plugin sends `POST /rest/interface/ethernet/monitor` with `{"numbers": "<every ethernet port>", "once": ""}` and `POST /rest/interface/bridge/monitor` with `{"numbers": "<the first bridge running STP>", "once": ""}`: `once` reads the current state a single time and returns. They change nothing. RouterOS returns every value as a string (`"true"`, `"1Gbps"`, `"1w2d3h"`); the plugin parses them and leaves anything it cannot parse empty.
 
 | Menu | Read | Docs |
 |---|---|---|
@@ -144,6 +174,10 @@ A collection only reads: every request is a `GET` to `https://<router>/rest/<men
 | `/ip/dhcp-server`, `/ip/pool` | the DHCP server of each network and its range (routers) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
 | `/ip/firewall/filter` | the rules of each network (its access; routers) | [Filter](https://help.mikrotik.com/docs/display/ROS/Filter) |
 | `/ip/dns` | `mdns-repeat-ifaces`: the networks in the mDNS repeater (routers) | [DNS](https://help.mikrotik.com/docs/display/ROS/DNS) |
+| `/ip/dns/static` | local DNS names (A records) | [DNS](https://help.mikrotik.com/docs/display/ROS/DNS) |
+| `/ip/dhcp-server/network` | the DHCP networks (gateway, `domain`) (routers) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
+| `/ip/firewall/address-list` | the `omini_paused` and `omini-private` lists (routers) | [Address-lists](https://help.mikrotik.com/docs/display/ROS/Address-lists) |
+| `POST /interface/bridge/monitor` (`once`) | the root bridge ID | [Spanning Tree Protocol](https://help.mikrotik.com/docs/spaces/ROS/pages/21725254/Spanning+Tree+Protocol) |
 | `/ip/neighbor` | MNDP / LLDP / CDP neighbors | [Neighbor discovery](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery) |
 | `/interface/wifi`, `/interface/wifi/registration-table` | Wi-Fi clients (`wifi` package, RouterOS 7.13+) | [WiFi](https://help.mikrotik.com/docs/spaces/ROS/pages/224559120/WiFi) |
 | `/interface/wireless`, `/interface/wireless/registration-table` | Wi-Fi clients (legacy `wireless` package) | [Wireless Interface](https://help.mikrotik.com/docs/spaces/ROS/pages/8978446/Wireless+Interface) |
@@ -170,8 +204,15 @@ Mapping notes:
   - that `PATCH /rest/interface/ethernet/<.id>` with only `disabled` leaves every other property of the port untouched (it is the documented equivalent of `set`; tested against the emulator only).
   - the shapes of the writes beyond `PATCH`: `PUT /rest/<menu>` answering the new item with its `.id`, `POST /rest/ip/firewall/filter/add` taking `place-before` and answering `{"ret": "<.id>"}`, `DELETE` answering nothing, and `POST /rest/ip/dns/set` (documented REST mappings of `add`, `remove` and `set`; tested against the emulator only);
   - the name and format of `/ip/dns` `mdns-repeat-ifaces` (RouterOS 7.16 and later; a comma-separated interface list);
-  - how a firewall rule reads in REST: a rule counts as one of Omini's presets only when it has no other matcher than its `in-interface` (and `protocol` and `dst-port=53` for DNS); properties RouterOS may add with an empty or default value are ignored, but one with a value makes the access read as *custom*.
-- **Undo** is best effort: a firewall rule put back after a failed change goes back at the end of its chain, and properties RouterOS only reports are not restored.
+  - how a firewall rule reads in REST: a rule counts as one of Omini's presets only when it has no other matcher than its `in-interface` (and `protocol` and `dst-port=53` for DNS); properties RouterOS may add with an empty or default value are ignored, but one with a value makes the access read as *custom*;
+  - `/ip/dns/static` in REST: an A entry printed with or without `type=A` (both are read as A), and an entry added without `type` being an A record;
+  - `POST /rest/tool/wol` with `mac` and `interface` (the documented mapping of `/tool wol`), its answer, and which policy it needs (`write` is assumed);
+  - `POST /rest/execute` with `as-string` answering the script's output as `{"ret": "<text>"}`, the value `as-string` takes (`""`, else `"true"` is tried), the policies `/execute` needs, and the first line of an export being its only time stamp (other versions may print the date as `nov/29/2024`: both forms are dropped);
+  - the connection table in REST: `src-address` as `<ip>:<port>` (without a port for ICMP), `.proplist` in the query string, and `DELETE /rest/ip/firewall/connection/<.id>` removing one;
+  - the bridge port's STP fields in REST (`role` as `root-port`, `designated-port`, `alternate-port`, `backup-port`, `disabled-port`; `forwarding` and `learning` flags; `status=inactive`), and `POST /rest/interface/bridge/monitor` with `once` answering `root-bridge-id` as `0x8000.48:A9:8A:11:22:02`. A port whose role is root or designated but whose `forwarding`/`learning` flags are missing has no STP state (only its role);
+  - SFP high temperature alarm thresholds: RouterOS's monitor does not report the module's alarm thresholds, so `temperature_high_c` is never set (Omini compares with 70 °C).
+- **Undo** is best effort: a firewall rule put back after a failed change goes back at the end of its chain, and properties RouterOS only reports are not restored. Connections removed by a pause are not put back (they are only removed after the pause is verified).
+- **STP:** the root bridge is read from the first bridge that runs STP, RSTP or MSTP (with MSTP, the CIST root); bridges with `protocol-mode=none` report no STP.
 - **Bridge VLAN entries holding several VLANs** are not split (see [What it changes](#what-it-changes)).
 - **CAPsMAN:** clients of APs managed by CAPsMAN (`/caps-man/registration-table`) are not read yet; add each AP as its own integration.
 - **Gateway latency / loss:** RouterOS has no per-gateway latency in its route table; gateways show only up/down (from the route's `active` flag).

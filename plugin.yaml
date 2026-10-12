@@ -11,8 +11,11 @@ description: >-
   gateways, CPU, memory, temperatures and pending updates. It changes, when
   asked: Ethernet ports on or off, a bridge port's VLANs and the bridge's
   VLANs (VLAN filtering must be on), and a router's VLAN networks (interface,
-  gateway, DHCP, access rules, mDNS) and DHCP reservations; each change is
-  read back and undone if RouterOS did not take it.
+  gateway, DHCP, access rules, mDNS), DHCP reservations, local DNS names
+  and paused devices (no internet); it sends Wake-on-LAN packets. Each change
+  is read back and undone if RouterOS did not take it. It also reads STP
+  port roles, bonds and the configuration (/export, without sensitive values)
+  for Omini's history.
 author: Omini
 homepage: https://github.com/riccardoalv/omini-plugin-mikrotik
 changes:
@@ -24,6 +27,12 @@ changes:
   - network.delete
   - reservation.set
   - reservation.delete
+  - dns.set
+  - dns.delete
+  - wol.send
+  - pause.set
+  - pause.delete
+backup: true
 fields:
   - key: url
     type: url
