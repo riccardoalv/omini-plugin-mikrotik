@@ -1,0 +1,8 @@
+[
+{".id":"*1","address":"fe80::4aa9:8aff:fe11:2201/64","from-pool":"","interface":"ether1","actual-interface":"ether1","eui-64":"false","advertise":"false","no-dad":"false","invalid":"false","dynamic":"true","link-local":"true","disabled":"false"},
+{".id":"*2","address":"2001:db8:ffff:10::2/64","from-pool":"","interface":"ether1","actual-interface":"ether1","eui-64":"false","advertise":"false","no-dad":"false","invalid":"false","dynamic":"true","global":"true","disabled":"false"},
+{".id":"*3","address":"fe80::4aa9:8aff:fe11:2202/64","from-pool":"","interface":"bridge","actual-interface":"bridge","eui-64":"false","advertise":"false","no-dad":"false","invalid":"false","dynamic":"true","link-local":"true","disabled":"false"},
+{".id":"*4","address":"2001:db8:bd7c:8800::1/64","from-pool":"isp-pd","interface":"bridge","actual-interface":"bridge","eui-64":"false","advertise":"true","no-dad":"false","invalid":"false","dynamic":"false","global":"true","disabled":"false"},
+{".id":"*5","address":"2001:db8:bd7c:8814::1/64","from-pool":"isp-pd","interface":"vlan20","actual-interface":"vlan20","eui-64":"false","advertise":"true","no-dad":"false","invalid":"false","dynamic":"false","global":"true","disabled":"false"},
+{".id":"*6","address":"fd00:88::1/64","from-pool":"","interface":"bridge","actual-interface":"bridge","eui-64":"false","advertise":"true","no-dad":"false","invalid":"false","dynamic":"false","disabled":"false"}
+]

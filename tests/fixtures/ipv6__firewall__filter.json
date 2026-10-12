@@ -1,0 +1,11 @@
+[
+{".id":"*1","chain":"input","action":"accept","connection-state":"established,related,untracked","comment":"defconf: accept established,related,untracked","dynamic":"false","invalid":"false","disabled":"false"},
+{".id":"*2","chain":"input","action":"drop","connection-state":"invalid","comment":"defconf: drop invalid","dynamic":"false","invalid":"false","disabled":"false"},
+{".id":"*3","chain":"input","action":"accept","protocol":"icmpv6","comment":"defconf: accept ICMPv6","dynamic":"false","invalid":"false","disabled":"false"},
+{".id":"*4","chain":"input","action":"drop","in-interface-list":"!LAN","comment":"defconf: drop everything else not coming from LAN","dynamic":"false","invalid":"false","disabled":"false"},
+{".id":"*5","chain":"forward","action":"accept","connection-state":"established,related,untracked","comment":"defconf: accept established,related,untracked","dynamic":"false","invalid":"false","disabled":"false"},
+{".id":"*6","chain":"forward","action":"drop","connection-state":"invalid","comment":"defconf: drop invalid","dynamic":"false","invalid":"false","disabled":"false"},
+{".id":"*7","chain":"forward","action":"drop","src-address-list":"bad_ipv6","comment":"defconf: drop packets with bad src ipv6","dynamic":"false","invalid":"false","disabled":"false"},
+{".id":"*8","chain":"forward","action":"accept","protocol":"icmpv6","comment":"defconf: accept ICMPv6","dynamic":"false","invalid":"false","disabled":"false"},
+{".id":"*9","chain":"forward","action":"drop","in-interface-list":"!LAN","comment":"defconf: drop everything else not coming from LAN","dynamic":"false","invalid":"false","disabled":"false"}
+]

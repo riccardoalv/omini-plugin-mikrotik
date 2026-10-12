@@ -26,6 +26,9 @@ WRITABLE = {
     "/rest/ip/firewall/address-list",
     "/rest/ip/dns/static",
     "/rest/ip/firewall/connection",
+    "/rest/ipv6/firewall/filter",
+    "/rest/ipv6/firewall/address-list",
+    "/rest/ipv6/firewall/connection",
 }
 
 FORBIDDEN = {"error": 403, "message": "Forbidden", "detail": "not enough permissions (9)"}
@@ -168,7 +171,11 @@ class FakeRouterOS:
         body = dict(body)
         before = body.pop("place-before", None)
         row = {".id": item, "disabled": "false", **body}
-        if menu in ("/rest/ip/firewall/filter", "/rest/interface/bridge/vlan"):
+        if menu in (
+            "/rest/ip/firewall/filter",
+            "/rest/ipv6/firewall/filter",
+            "/rest/interface/bridge/vlan",
+        ):
             row.setdefault("dynamic", "false")
             row.setdefault("invalid", "false")
         if menu == "/rest/ip/dhcp-server/lease":

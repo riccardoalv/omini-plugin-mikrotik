@@ -1,0 +1,6 @@
+[
+{".id":"*1","list":"bad_ipv6","address":"::/128","comment":"defconf: unspecified address","dynamic":"false","disabled":"false","creation-time":"2024-11-29 14:17:45"},
+{".id":"*2","list":"bad_ipv6","address":"::1/128","comment":"defconf: lo","dynamic":"false","disabled":"false","creation-time":"2024-11-29 14:17:45"},
+{".id":"*3","list":"bad_ipv6","address":"fec0::/10","comment":"defconf: site-local","dynamic":"false","disabled":"false","creation-time":"2024-11-29 14:17:45"},
+{".id":"*4","list":"bad_ipv6","address":"2001:db8::/32","comment":"defconf: documentation","disabled":"true","dynamic":"false","creation-time":"2024-11-29 14:17:45"}
+]

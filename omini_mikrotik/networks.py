@@ -94,6 +94,11 @@ class State:
     rules: list[dict[str, Any]] | None = None
     address_lists: list[dict[str, Any]] = field(default_factory=list)
     dns: dict[str, Any] | None = None
+    # IPv6 (read only for a pause, see services.read_ipv6): None when RouterOS has
+    # no IPv6 firewall (the package is off).
+    addresses6: list[dict[str, Any]] = field(default_factory=list)
+    rules6: list[dict[str, Any]] | None = None
+    address_lists6: list[dict[str, Any]] = field(default_factory=list)
 
     def vlan_iface(self, name: str) -> dict[str, Any] | None:
         return next((v for v in self.vlan_ifaces if v.get("name") == name), None)

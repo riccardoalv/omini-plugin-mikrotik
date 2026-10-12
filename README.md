@@ -100,11 +100,19 @@ Omini shows every enabled A entry with a name (regexp, CNAME, AAAA, forward and 
 
 Only on a router (a device with a default route and a network of its own on the LAN side; not a switch whose default route is its management VLAN).
 
-- **The list:** each paused address is an entry of the firewall address list `omini_paused` (`/ip/firewall/address-list`), with the comment `Omini <mac> <name>`, which is how Omini knows which device it is. `pause.set` `{mac, ips, name}` adds the device's addresses and removes the ones it no longer has (when the device got another address); an address another entry held moves to this device.
-- **The rule:** one `/ip/firewall/filter` rule, `chain=forward src-address-list=omini_paused dst-address-list=!omini-private action=drop` (comment `Omini: paused devices`), added with `place-before` the **first rule of the forward chain**, before the default configuration's fasttrack and *accept established, related*, so that open connections are dropped too. `omini-private` is the list of private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) the networks' *internet only* access also uses, created when missing. A paused device still reaches the router (DNS, DHCP) and every private network: the NAS, the printer.
-- **Open connections:** after the change is verified, the device's connections are removed from the connection tracking table (`GET /rest/ip/firewall/connection` with `.proplist=.id,src-address`, then `DELETE` of each one from its addresses), best effort: one that fails is skipped, the rule drops what comes next.
-- `pause.delete` `{mac}`: removes the device's entries; the rule goes with the last entry (`omini-private` stays: networks use it).
-- The router's own addresses cannot be paused. Omini refuses to pause its own host, the router and network devices before asking the plugin.
+A paused device loses the internet over **IPv4 and IPv6**; its own networks stay reachable. It is blocked by its **MAC address** in both families, so the addresses Omini does not know (IPv6 temporary addresses that change, a new IPv4 address) are covered too, and by its IPv4 addresses.
+
+- **The list:** each paused IPv4 address is an entry of the firewall address list `omini_paused` (`/ip/firewall/address-list`), with the comment `Omini <mac> <name>`, which is how Omini knows which device it is (and the addresses it reports as paused). `pause.set` `{mac, ips, name}` adds the device's addresses and removes the ones it no longer has (when the device got another address); an address another entry held moves to this device.
+- **The rules:** one shared `/ip/firewall/filter` rule, `chain=forward src-address-list=omini_paused dst-address-list=!omini-private action=drop` (comment `Omini: paused devices`), and per paused device one rule in each family, comment `Omini <mac> <name>`:
+  - `/ip/firewall/filter`: `chain=forward src-mac-address=<MAC> dst-address-list=!omini-private action=drop`;
+  - `/ipv6/firewall/filter`: `chain=forward src-mac-address=<MAC> dst-address-list=!omini-private6 action=drop`.
+
+  Each is added with `place-before` the **first rule of its forward chain**, before the default configuration's fasttrack and *accept established, related*, so that open connections are dropped too. `src-mac-address` matches the source MAC of the frame the router received, which is the device's own for a device on one of the router's L2 networks (Ethernet, bridge, Wi-Fi); RouterOS has no address list of MACs, hence one rule per device. The shared IPv4 rule still covers a device whose traffic reaches the router through another hop (its MAC is then that hop's).
+- **Local networks:** `omini-private` is the list of private IPv4 networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) the networks' *internet only* access also uses, created when missing. `omini-private6` (`/ipv6/firewall/address-list`, comment `Omini: local networks`) holds link-local `fe80::/10`, ULA `fc00::/7`, multicast `ff00::/8` and the router's own **LAN-side IPv6 prefixes** (`/ipv6/address` on interfaces other than the WAN, global ones). Every pause brings it up to date, so a prefix the ISP changed is followed on the next pause. A paused device still reaches the router (DNS, DHCP, router advertisements) and every local network: the NAS, the printer.
+- **Open connections:** after the change is verified, the device's connections are removed from the connection tracking tables, best effort (one that fails is skipped, the rules drop what comes next): `GET /rest/ip/firewall/connection` with `.proplist=.id,src-address` and `DELETE` of each one from its IPv4 addresses, and the same in `/ipv6/firewall/connection` for the device's global IPv6 addresses the router knows (`/ipv6/neighbor` by MAC).
+- `pause.delete` `{mac}`: removes the device's entries and rules; the shared rule and Omini's entries of `omini-private6` go with the last device (`omini-private` stays: networks use it). A device paused by version 0.3.0 (the IPv4 list only) resumes the same way; pausing it again adds its MAC rules.
+- A router without IPv6 (no `/ipv6/firewall/filter` menu) is paused over IPv4 only. A user that cannot read the IPv6 firewall makes `pause.set` fail rather than leave IPv6 open.
+- The router's own addresses and MACs cannot be paused. Omini refuses to pause its own host, the router and network devices before asking the plugin.
 
 ### Configuration backups
 
@@ -133,7 +141,7 @@ Run in a RouterOS terminal (WinBox → New Terminal, or SSH):
 /ip service set www-ssl certificate=omini-https disabled=no
 ```
 
-The group has no `policy`, `reboot`, `test`, `sensitive`, `password` or login policies other than `api` and `rest-api` ([user group policies](https://help.mikrotik.com/docs/spaces/ROS/pages/8978504/User)). The `write` policy covers every change (ports, bridge VLANs, VLAN interfaces, addresses, DHCP, firewall rules, address lists and connections, DNS names, the mDNS repeater, Wake-on-LAN): RouterOS has no finer policy for these menus. Without `sensitive`, the configuration backup leaves passwords and keys out (RouterOS hides them in an export for a group without it, as well as without `show-sensitive`). The backup runs `/export` through `/execute`, a script: RouterOS runs it with the group's policies (`read` is what an export needs; whether `/execute` itself needs `write` is not verified, the group above has it). The plugin only writes what a change you ask for needs (see [What it changes](#what-it-changes)).
+The group has no `policy`, `reboot`, `test`, `sensitive`, `password` or login policies other than `api` and `rest-api` ([user group policies](https://help.mikrotik.com/docs/spaces/ROS/pages/8978504/User)). The `write` policy covers every change (ports, bridge VLANs, VLAN interfaces, addresses, DHCP, IPv4 and IPv6 firewall rules, address lists and connections, DNS names, the mDNS repeater, Wake-on-LAN): RouterOS has no finer policy for these menus. Without `sensitive`, the configuration backup leaves passwords and keys out (RouterOS hides them in an export for a group without it, as well as without `show-sensitive`). The backup runs `/export` through `/execute`, a script: RouterOS runs it with the group's policies (`read` is what an export needs; whether `/execute` itself needs `write` is not verified, the group above has it). The plugin only writes what a change you ask for needs (see [What it changes](#what-it-changes)).
 
 **Read-only instead:** create the group with `policy=read,api,rest-api`. The map works the same; every change then fails with a message saying the group needs the `write` policy (add it later with `/user group set omini policy=read,write,api,rest-api`).
 
@@ -177,6 +185,7 @@ A collection only reads: every request is a `GET` to `https://<router>/rest/<men
 | `/ip/dns/static` | local DNS names (A records) | [DNS](https://help.mikrotik.com/docs/display/ROS/DNS) |
 | `/ip/dhcp-server/network` | the DHCP networks (gateway, `domain`) (routers) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
 | `/ip/firewall/address-list` | the `omini_paused` and `omini-private` lists (routers) | [Address-lists](https://help.mikrotik.com/docs/display/ROS/Address-lists) |
+| `/ipv6/firewall/filter`, `/ipv6/firewall/address-list`, `/ipv6/address`, `/ipv6/neighbor` | only for a pause: its IPv6 rule, `omini-private6`, the LAN-side prefixes, the device's IPv6 addresses (routers) | [Firewall](https://help.mikrotik.com/docs/display/ROS/Firewall) |
 | `POST /interface/bridge/monitor` (`once`) | the root bridge ID | [Spanning Tree Protocol](https://help.mikrotik.com/docs/spaces/ROS/pages/21725254/Spanning+Tree+Protocol) |
 | `/ip/neighbor` | MNDP / LLDP / CDP neighbors | [Neighbor discovery](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery) |
 | `/interface/wifi`, `/interface/wifi/registration-table` | Wi-Fi clients (`wifi` package, RouterOS 7.13+) | [WiFi](https://help.mikrotik.com/docs/spaces/ROS/pages/224559120/WiFi) |
@@ -216,7 +225,8 @@ Mapping notes:
 - **Bridge VLAN entries holding several VLANs** are not split (see [What it changes](#what-it-changes)).
 - **CAPsMAN:** clients of APs managed by CAPsMAN (`/caps-man/registration-table`) are not read yet; add each AP as its own integration.
 - **Gateway latency / loss:** RouterOS has no per-gateway latency in its route table; gateways show only up/down (from the route's `active` flag).
-- **IPv6** routes and leases are not read.
+- **IPv6** routes and leases are not read (a pause reads the IPv6 firewall, addresses and neighbors).
+- **Pause by MAC** (`src-mac-address` in the forward chain of both families) follows MikroTik's documentation; it is not verified on hardware yet, nor is the IPv6 connection table's `src-address` format (`[addr]:port` and `addr` are both read).
 - **Traffic** is the average between two collections, computed by Omini from the counters.
 
 ## Development

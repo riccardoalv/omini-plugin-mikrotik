@@ -8,13 +8,25 @@ collection reports of them (Device.dns_records, dns_domain, paused).
   else the first network's that has one.
 - Wake-on-LAN: the console's /tool/wol (``POST /tool/wol`` with mac and
   interface), on the interface whose address's network holds the device's IP.
-- Pause: the firewall address list ``omini_paused`` (one entry per address,
-  comment "Omini <mac> <name>") and one forward filter rule dropping
-  "src-address-list=omini_paused dst-address-list=!omini-private" (the
-  private networks list networks.py keeps), placed before the first rule of
-  the forward chain so that established connections are dropped too. Only on
-  a router: a device with a default route and a LAN-side network (see
-  networks.py), so not a switch whose default route is its management VLAN.
+- Pause: by the device's MAC, in both families, and by its IPv4 addresses.
+  The firewall address list ``omini_paused`` (one entry per IPv4 address,
+  comment "Omini <mac> <name>") is how a collection knows who is paused, and
+  one shared forward rule drops "src-address-list=omini_paused
+  dst-address-list=!omini-private" (the private networks list networks.py
+  keeps). Each paused device also gets one forward rule per family dropping
+  "src-mac-address=<MAC> dst-address-list=!omini-private" (/ip/firewall/filter)
+  and "src-mac-address=<MAC> dst-address-list=!omini-private6"
+  (/ipv6/firewall/filter), comment "Omini <mac> <name>": the MAC covers the
+  addresses Omini does not know (IPv6 temporary addresses, a new IPv4).
+  ``omini-private6`` (/ipv6/firewall/address-list) holds link-local
+  fe80::/10, ULA fc00::/7, multicast ff00::/8 and the router's LAN-side IPv6
+  prefixes (kept up to date on every pause). Every rule goes before the first
+  rule of the forward chain so that established connections are dropped too.
+  src-mac-address matches the frame's source MAC, which a router sees for
+  devices on its own L2 networks (Ethernet, bridge, Wi-Fi); the IPv4 list
+  rule still covers a device behind another hop. Only on a router: a device
+  with a default route and a LAN-side network (see networks.py), so not a
+  switch whose default route is its management VLAN.
 """
 
 from __future__ import annotations
@@ -43,6 +55,13 @@ from omini_mikrotik.networks import (
 DNS_STATIC = "/ip/dns/static"
 WOL = "/tool/wol"
 CONNECTIONS = "/ip/firewall/connection"
+CONNECTIONS6 = "/ipv6/firewall/connection"
+FILTER6 = "/ipv6/firewall/filter"
+ADDRESS_LISTS6 = "/ipv6/firewall/address-list"
+ADDRESSES6 = "/ipv6/address"
+NEIGHBORS6 = "/ipv6/neighbor"
+PRIVATE6_LIST = "omini-private6"
+LOCAL6_RANGES = ("fe80::/10", "fc00::/7", "ff00::/8")
 MARK = "Omini"
 PAUSED_LIST = "omini_paused"
 PAUSE_RULE = {
@@ -254,6 +273,7 @@ def sort_ip(ip: str) -> tuple[int, str]:
 
 
 def pause_rules(st: State) -> list[dict[str, Any]]:
+    """The shared IPv4 rule of omini_paused."""
     return [
         r
         for r in st.rules or []
@@ -261,10 +281,38 @@ def pause_rules(st: State) -> list[dict[str, Any]]:
     ]
 
 
-def first_forward(st: State) -> str | None:
-    """The first static rule of the forward chain: the pause rule goes before
-    it, so it also drops what the accept (and fasttrack) rules let through."""
-    for r in st.rules or []:
+def mac_rule(m: str, private: str) -> dict[str, str]:
+    return {
+        "chain": "forward",
+        "action": "drop",
+        "src-mac-address": m.upper(),
+        "dst-address-list": "!" + private,
+    }
+
+
+def mac_rules(rules: list[dict[str, Any]] | None, m: str | None = None) -> list[dict[str, Any]]:
+    """Omini's per-device rules (src-mac-address, comment 'Omini <mac> ...') of
+    one family's filter; of one MAC when m is given."""
+    out = []
+    for r in rules or []:
+        parsed = parse_comment(r.get("comment"))
+        if (
+            parsed is None
+            or flag(r.get("dynamic"))
+            or r.get("chain") != "forward"
+            or text(r.get("action")) != "drop"
+            or norm_mac(r.get("src-mac-address")) != parsed[0]
+        ):
+            continue
+        if m is None or parsed[0] == m:
+            out.append(r)
+    return out
+
+
+def first_forward(rules: list[dict[str, Any]] | None) -> str | None:
+    """The first static rule of the forward chain: the pause rules go before
+    it, so they also drop what the accept (and fasttrack) rules let through."""
+    for r in rules or []:
         if r.get("chain") == "forward" and not flag(r.get("dynamic")):
             return text(r.get(".id"))
     return None
@@ -290,13 +338,120 @@ def own_addresses(st: State) -> set[str]:
     return out
 
 
+def own_macs(st: State) -> set[str]:
+    return {norm_mac(i.get("mac-address")) for i in st.interfaces.values()} - {""}
+
+
+# --- pause: IPv6 --------------------------------------------------------------------
+
+
+def read_ipv6(c: Client, st: State, need: bool) -> None:
+    """Reads the IPv6 addresses, filter and address lists into st. A RouterOS
+    without IPv6 (the menu does not exist) leaves rules6 None; one whose user
+    cannot read it fails when need (a pause would leave IPv6 open)."""
+    try:
+        st.rules6 = as_list(c.get(FILTER6))
+    except NotFound:
+        st.rules6 = None
+        return
+    except Forbidden as e:
+        if need:
+            raise PluginError(f"the RouterOS user cannot read {FILTER6}") from e
+        st.rules6 = None
+        return
+    for menu, attr in ((ADDRESSES6, "addresses6"), (ADDRESS_LISTS6, "address_lists6")):
+        try:
+            setattr(st, attr, as_list(c.get(menu)))
+        except (Forbidden, NotFound) as e:
+            if need:
+                raise PluginError(f"the RouterOS user cannot read {menu}") from e
+
+
+def lan_prefixes6(st: State) -> list[str]:
+    """The router's own IPv6 prefixes on the LAN side (not the WAN's), global
+    ones (link-local and ULA are in the list already), as networks."""
+    out: list[str] = []
+    for a in st.addresses6:
+        iface = text(a.get("interface"))
+        if iface in st.wan or flag(a.get("disabled")) or flag(a.get("invalid")):
+            continue
+        try:
+            net = ipaddress.ip_interface(text(a.get("address"))).network
+        except ValueError:
+            continue
+        if net.version != 6 or net.is_link_local or net.is_multicast:
+            continue
+        if any(net.subnet_of(ipaddress.ip_network(r)) for r in LOCAL6_RANGES):  # type: ignore[arg-type]
+            continue
+        if str(net) not in out:
+            out.append(str(net))
+    return out
+
+
+def private6_entries(st: State) -> list[dict[str, Any]]:
+    return [
+        a
+        for a in st.address_lists6
+        if a.get("list") == PRIVATE6_LIST and not flag(a.get("dynamic"))
+    ]
+
+
+def ensure_private6(j: Journal, st: State) -> None:
+    """omini-private6: link-local, ULA, multicast and the LAN-side prefixes;
+    Omini's entries of a prefix the router no longer has go."""
+    want = [*LOCAL6_RANGES, *lan_prefixes6(st)]
+    have = private6_entries(st)
+    got = {text(a.get("address")) for a in have}
+    for a in have:
+        if text(a.get("address")) not in want and text(a.get("comment")).startswith(MARK):
+            j.remove(ADDRESS_LISTS6, a, "an old prefix of the local IPv6 networks")
+    for net in want:
+        if net not in got:
+            j.add(
+                ADDRESS_LISTS6,
+                {"list": PRIVATE6_LIST, "address": net, "comment": f"{MARK}: local networks"},
+                "the list of local IPv6 networks",
+            )
+
+
+def private6_ok(st: State) -> bool:
+    got = {text(a.get("address")) for a in private6_entries(st) if on(a)}
+    return set(LOCAL6_RANGES) <= got
+
+
+# --- pause: changes -----------------------------------------------------------------
+
+
+def set_mac_rule(
+    j: Journal, menu: str, rules: list[dict[str, Any]], m: str, private: str, comment: str
+) -> None:
+    """The device's rule in one family's filter, first in the forward chain."""
+    have = mac_rules(rules, m)
+    for r in have[1:]:
+        j.remove(menu, r, f"a duplicate rule of the pause of {m}")
+    if have:
+        body = {**mac_rule(m, private), "comment": comment, "disabled": "false"}
+        body.pop("src-mac-address")  # RouterOS answers it in its own case
+        j.set(menu, have[0], body, f"the pause of {m}")
+        return
+    j.add(
+        menu,
+        {**mac_rule(m, private), "comment": comment},
+        f"the pause of {m}",
+        place_before=first_forward(rules),
+    )
+
+
 def pause_set(j: Journal, st: State, value: dict[str, Any]) -> list[str]:
-    """Puts the device's addresses in omini_paused (replacing the ones it had)
-    and makes sure the rule is there. Answers the addresses."""
+    """Puts the device's addresses in omini_paused (replacing the ones it had),
+    makes sure the shared rule is there, and adds the device's rules by MAC
+    (IPv4 and IPv6). Answers the addresses."""
     router_only(st)
     m = norm_mac(value.get("mac"))
     if not m:
         raise PluginError(f"{value.get('mac')!r} is not a MAC address")
+    if m in own_macs(st):
+        raise PluginError(f"{m} is the router's own MAC address")
     ips = sorted({check_ip(ip) for ip in value.get("ips") or []}, key=sort_ip)
     if not ips:
         raise PluginError(f"{m} has no address to pause")
@@ -331,16 +486,22 @@ def pause_set(j: Journal, st: State, value: dict[str, Any]) -> list[str]:
             FILTER,
             {**PAUSE_RULE, "comment": f"{MARK}: paused devices"},
             "the rule of paused devices",
-            place_before=first_forward(st),
+            place_before=first_forward(st.rules),
         )
     elif not any(on(r) for r in rules):
         j.set(FILTER, rules[0], {"disabled": "false"}, "the rule of paused devices")
+    set_mac_rule(j, FILTER, st.rules or [], m, PRIVATE_LIST, comment)
+    if st.rules6 is not None:
+        ensure_private6(j, st)
+        set_mac_rule(j, FILTER6, st.rules6, m, PRIVATE6_LIST, comment)
     return ips
 
 
 def pause_delete(j: Journal, st: State, value: dict[str, Any]) -> None:
-    """Takes the device's addresses out of omini_paused; the rule goes with the
-    last entry."""
+    """Takes the device out of omini_paused and removes its rules; the shared
+    rule and omini-private6 go with the last device (omini-private stays:
+    networks use it). A device paused before 0.3.1 (IPv4 list only) resumes
+    the same way."""
     router_only(st)
     m = norm_mac(value.get("mac"))
     if not m:
@@ -348,51 +509,112 @@ def pause_delete(j: Journal, st: State, value: dict[str, Any]) -> None:
     have = entries_of(st, m)
     for a in have:
         j.remove(ADDRESS_LISTS, a, f"the pause of {m}")
-    if all(any(a is h for h in have) for a in entries(st)):
-        for r in pause_rules(st):
-            j.remove(FILTER, r, "the rule of paused devices")
+    for r in mac_rules(st.rules, m):
+        j.remove(FILTER, r, f"the pause of {m}")
+    for r in mac_rules(st.rules6, m):
+        j.remove(FILTER6, r, f"the pause of {m}")
+    if any(all(a is not h for h in have) for a in entries(st)):
+        return
+    for r in pause_rules(st):
+        j.remove(FILTER, r, "the rule of paused devices")
+    for a in private6_entries(st):
+        if text(a.get("comment")).startswith(MARK):
+            j.remove(ADDRESS_LISTS6, a, "the list of local IPv6 networks")
+
+
+def rule_on(rules: list[dict[str, Any]] | None, m: str, private: str) -> bool:
+    return any(
+        on(r) and text(r.get("dst-address-list")) == "!" + private for r in mac_rules(rules, m)
+    )
 
 
 def pause_matches(st: State, value: dict[str, Any], ips: list[str]) -> bool:
     m = norm_mac(value.get("mac"))
     got = next((p for p in paused(st) if p.mac == m), None)
-    return (
-        got is not None and set(got.ips or []) == set(ips) and any(on(r) for r in pause_rules(st))
-    )
+    if got is None or set(got.ips or []) != set(ips) or not any(on(r) for r in pause_rules(st)):
+        return False
+    if not rule_on(st.rules, m, PRIVATE_LIST):
+        return False
+    return st.rules6 is None or (rule_on(st.rules6, m, PRIVATE6_LIST) and private6_ok(st))
 
 
 def pause_gone(st: State, value: dict[str, Any]) -> bool:
     m = norm_mac(value.get("mac"))
-    if any(p.mac == m for p in paused(st)):
+    if any(p.mac == m for p in paused(st)) or mac_rules(st.rules, m) or mac_rules(st.rules6, m):
         return False
     return bool(entries(st)) or not pause_rules(st)
 
 
-def cut_connections(c: Client, ips: list[str]) -> int:
-    """Removes the connections from these addresses (best effort: the router
-    keeps working either way, and the rule drops the next packets). Answers how
-    many were removed."""
-    want = set(ips)
+# --- pause: open connections ----------------------------------------------------------
+
+
+def conn_source(value: Any) -> str:
+    """The address of a connection's src-address: '192.168.88.10:51234',
+    '192.168.88.10' (ICMP), '[2001:db8::1]:443' or '2001:db8::1' → the IP."""
+    src = text(value)
+    if src.startswith("["):
+        return src[1:].split("]", 1)[0]
+    if src.count(":") == 1:
+        return src.split(":")[0]
+    return src
+
+
+def device_ips6(c: Client, m: str) -> set[str]:
+    """The device's IPv6 addresses the router knows (/ipv6/neighbor), but
+    link-local ones (local traffic is not cut)."""
+    try:
+        rows = as_list(c.get(NEIGHBORS6))
+    except Exception:
+        return set()
+    out = set()
+    for r in rows:
+        if norm_mac(r.get("mac-address")) != m:
+            continue
+        try:
+            ip = ipaddress.IPv6Address(text(r.get("address")).split("%")[0])
+        except ValueError:
+            continue
+        if not ip.is_link_local:
+            out.add(str(ip))
+    return out
+
+
+def cut_in(c: Client, menu: str, want: set[str], budget: int) -> int:
     cut = 0
     try:
-        rows = as_list(c.get(f"{CONNECTIONS}?.proplist=.id,src-address"))
+        rows = as_list(c.get(f"{menu}?.proplist=.id,src-address"))
     except Exception:
         log.warning("could not read the firewall connections to cut them")
         return 0
     for r in rows:
-        src = text(r.get("src-address"))  # '192.168.88.10:51234' (no port for ICMP)
-        if src.count(":") == 1:
-            src = src.split(":")[0]
+        src = conn_source(r.get("src-address"))
+        try:
+            src = str(ipaddress.ip_address(src))
+        except ValueError:
+            continue
         if src not in want or not text(r.get(".id")):
             continue
         try:
-            c.delete(f"{CONNECTIONS}/{text(r.get('.id'))}")
+            c.delete(f"{menu}/{text(r.get('.id'))}")
             cut += 1
         except (Forbidden, NotFound):
             continue  # gone already, or not allowed: the rule still drops what is new
         except Exception:
             log.warning("could not remove a connection of a paused device")
             break
-        if cut >= MAX_CUTS:
+        if cut >= budget:
             break
+    return cut
+
+
+def cut_connections(c: Client, ips: list[str], m: str = "", ipv6: bool = False) -> int:
+    """Removes the connections from these addresses, and with ipv6 the ones
+    from the device's IPv6 addresses (best effort: the router keeps working
+    either way, and the rules drop the next packets). Answers how many were
+    removed."""
+    cut = cut_in(c, CONNECTIONS, set(ips), MAX_CUTS)
+    if ipv6 and m and cut < MAX_CUTS:
+        mine = device_ips6(c, m)
+        if mine:
+            cut += cut_in(c, CONNECTIONS6, mine, MAX_CUTS - cut)
     return cut

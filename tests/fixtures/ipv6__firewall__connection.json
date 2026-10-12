@@ -1,0 +1,6 @@
+[
+{".id":"*2001","protocol":"tcp","src-address":"[2001:db8:bd7c:8800:5c1e:94ff:3a01:77d2]:51234","dst-address":"[2001:db8:aaaa::80]:443","tcp-state":"established","timeout":"23h59m"},
+{".id":"*2002","protocol":"udp","src-address":"[2001:db8:bd7c:8800::a1]:40000","dst-address":"[2001:db8:aaaa::53]:443","timeout":"3m"},
+{".id":"*2003","protocol":"tcp","src-address":"[2001:db8:bd7c:8800::b2]:40000","dst-address":"[2001:db8:aaaa::80]:443","tcp-state":"established","timeout":"23h59m"},
+{".id":"*2004","protocol":"udp","src-address":"[fe80::a8bb:ccff:fe00:1]:5353","dst-address":"[ff02::fb]:5353","timeout":"10s"}
+]

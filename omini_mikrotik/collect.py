@@ -1018,14 +1018,23 @@ def change_service(c: Client, j: Journal, change: Change) -> None:
     elif change.kind == "wol.send":
         services.wol_send(c, router_state(c), value)
     elif change.kind == "pause.set":
-        ips = services.pause_set(j, router_state(c), value)
-        if not services.pause_matches(router_state(c), value, ips):
+        ips = services.pause_set(j, pause_state(c, True), value)
+        after = pause_state(c, True)
+        if not services.pause_matches(after, value, ips):
             raise PluginError(f"RouterOS did not pause {value.get('mac')}")
-        services.cut_connections(c, ips)
+        m = nets.norm_mac(value.get("mac"))
+        services.cut_connections(c, ips, m, ipv6=after.rules6 is not None)
     else:
-        services.pause_delete(j, router_state(c), value)
-        if not services.pause_gone(router_state(c), value):
+        services.pause_delete(j, pause_state(c, False), value)
+        if not services.pause_gone(pause_state(c, False), value):
             raise PluginError(f"RouterOS did not resume {value.get('mac')}")
+
+
+def pause_state(c: Client, need: bool) -> nets.State:
+    """The router as a pause sees it: its networks and both families' firewall."""
+    st = router_state(c)
+    services.read_ipv6(c, st, need)
+    return st
 
 
 SERVICE_CHANGES = ("dns.set", "dns.delete", "wol.send", "pause.set", "pause.delete")
@@ -1042,7 +1051,8 @@ def apply(cfg: Config, change: Change) -> list[Device]:
     network.delete, reservation.set, reservation.delete: the router's VLAN
     interfaces, addresses, DHCP and firewall (see networks.py). dns.set,
     dns.delete, wol.send, pause.set, pause.delete: /ip/dns/static,
-    /tool/wol, the omini_paused address list and its rule (see services.py)."""
+    /tool/wol, the omini_paused address list and the pause rules of both
+    families (see services.py)."""
     c = client_from(cfg)
     j = Journal(c)
     try:
