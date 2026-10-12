@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import contextlib
 import ipaddress
-import re
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any, TypeVar
@@ -35,11 +34,27 @@ from omini_sdk import (
     log,
 )
 
+from omini_mikrotik import networks as nets
+from omini_mikrotik import vlans as vlans_mod
 from omini_mikrotik.client import Client, Forbidden, NotFound
+from omini_mikrotik.common import (
+    as_list,
+    as_object,
+    counter,
+    duration_s,
+    enabled,
+    first_name,
+    flag,
+    mac,
+    names,
+    number,
+    rate_mbps,
+    speed_setting,
+    vlan_ids,
+)
+from omini_mikrotik.journal import Journal
 
 T = TypeVar("T")
-
-MAC = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 
 
 def client_from(cfg: Config) -> Client:
@@ -47,141 +62,6 @@ def client_from(cfg: Config) -> Client:
     if not url or not user:
         raise PluginError("the address and username are required")
     return Client(url, user, password, verify_tls=cfg.bool("verify_tls", False))
-
-
-# --- parsing helpers -------------------------------------------------------
-
-
-def mac(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    v = value.strip().lower().replace("-", ":")
-    return v if MAC.match(v) and v != "00:00:00:00:00:00" else None
-
-
-def number(value: Any) -> float | None:
-    """'35' → 35.0, '-5.792dBm' → -5.792, '3.237V' → 3.237, '' → None."""
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    if isinstance(value, str):
-        m = re.search(r"-?\d+(\.\d+)?", value)
-        if m:
-            return float(m.group())
-    return None
-
-
-def counter(value: Any) -> int | None:
-    n = number(value)
-    return int(n) if n is not None and n >= 0 else None
-
-
-def flag(value: Any) -> bool | None:
-    """RouterOS booleans: 'true'/'false' (REST), 'yes'/'no' (some monitors)."""
-    if isinstance(value, bool):
-        return value
-    if not isinstance(value, str) or not value:
-        return None
-    v = value.strip().lower()
-    if v in ("true", "yes"):
-        return True
-    if v in ("false", "no"):
-        return False
-    return None
-
-
-RATE_UNITS = {"": 1e-6, "k": 1e-3, "m": 1, "g": 1e3, "t": 1e6}
-
-
-def rate_mbps(value: Any) -> float | None:
-    """'1Gbps' → 1000, '2.5Gbps' → 2500, '866.7Mbps-80MHz/2S/SGI' → 866.7, '54Mbps' → 54."""
-    if not isinstance(value, str):
-        return None
-    m = re.match(r"\s*(\d+(?:\.\d+)?)\s*([kmgt]?)bps", value, re.IGNORECASE)
-    if not m:
-        return None
-    return float(m.group(1)) * RATE_UNITS[m.group(2).lower()]
-
-
-def speed_setting(value: Any) -> int | None:
-    """Ethernet speed setting: '1G-baseT-full' → 1000, '100M-baseT-half' → 100,
-    '10G-baseSR-LR' → 10000."""
-    if not isinstance(value, str):
-        return None
-    m = re.match(r"\s*(\d+(?:\.\d+)?)([MG])-", value)
-    if not m:
-        return None
-    v = float(m.group(1))
-    return int(v * 1000) if m.group(2) == "G" else int(v)
-
-
-DURATION = re.compile(r"(\d+)([wdhms])")
-SECONDS = {"w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}
-
-
-def duration_s(value: Any) -> int | None:
-    """'1w2d3h4m5s' → seconds; also '2d03:04:05' and '00:09:57'."""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    v = value.strip()
-    total = 0
-    m = re.search(r"(\d+):(\d{2}):(\d{2})$", v)
-    if m:
-        h, mi, s = (int(x) for x in m.groups())
-        total = h * 3600 + mi * 60 + s
-        v = v[: m.start()]
-    parts = DURATION.findall(v)
-    if not parts and not m:
-        return None
-    total += sum(int(n) * SECONDS[u] for n, u in parts)
-    return total
-
-
-def as_list(data: Any) -> list[dict[str, Any]]:
-    if isinstance(data, list):
-        return [r for r in data if isinstance(r, dict)]
-    if isinstance(data, dict):
-        return [data]
-    return []
-
-
-def as_object(data: Any) -> dict[str, Any]:
-    if isinstance(data, dict):
-        return data
-    if isinstance(data, list) and data and isinstance(data[0], dict):
-        return data[0]
-    return {}
-
-
-def enabled(row: dict[str, Any]) -> bool:
-    return not flag(row.get("disabled")) and not flag(row.get("invalid"))
-
-
-def first_name(value: Any) -> str | None:
-    """'ether2,bridge' → 'ether2' (neighbors list the port, then its bridge)."""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value.split(",")[0].strip() or None
-
-
-def names(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(v).strip() for v in value if str(v).strip()]
-    if not isinstance(value, str):
-        return []
-    return [v.strip() for v in value.split(",") if v.strip()]
-
-
-def vlan_ids(value: Any) -> list[int]:
-    """'10,20,30-32' → [10, 20, 30, 31, 32]."""
-    out: list[int] = []
-    for part in names(value):
-        m = re.fullmatch(r"(\d+)(?:-(\d+))?", part)
-        if not m:
-            continue
-        lo = int(m.group(1))
-        hi = int(m.group(2) or lo)
-        out.extend(v for v in range(lo, min(hi, 4094) + 1) if 1 <= v <= 4094)
-    return out
 
 
 # --- optional data -----------------------------------------------------------
@@ -334,13 +214,17 @@ def build_interfaces(
     }
     members: dict[str, list[str]] = {}
     pvid: dict[str, int] = {}
+    vlan_ports: set[str] = set()  # ports whose VLANs Omini can change
     for p in raw["bridge_ports"]:
         port, bridge = p.get("interface"), p.get("bridge")
         if not port or not bridge or not enabled(p):
             continue
         members.setdefault(bridge, []).append(port)
+        if bridge not in filtering:
+            continue
+        vlan_ports.add(port)
         n = counter(p.get("pvid"))
-        if bridge in filtering and n and 1 <= n <= 4094:
+        if n and 1 <= n <= 4094 and p.get("frame-types") != "admit-only-vlan-tagged":
             pvid[port] = n
     tagged: dict[str, set[int]] = {}
     for v in raw["bridge_vlans"]:
@@ -410,7 +294,7 @@ def build_interfaces(
             fd = flag(mon.get("full-duplex"))
             duplex = "full" if fd else "half" if fd is False else None
         port_vlans = None
-        if name in pvid or name in tagged:
+        if name in vlan_ports:
             port_vlans = PortVlans(
                 untagged=pvid.get(name),
                 tagged=sorted(tagged.get(name, set())) or None,
@@ -444,7 +328,15 @@ def build_interfaces(
 
 
 def device_vlans(raw: dict[str, Any]) -> list[Vlan]:
-    """VLAN interfaces (with their subnet) and VLANs of the bridge VLAN table."""
+    """VLAN interfaces (with their subnet) and VLANs of the bridge VLAN table.
+    A VLAN's name: its bridge VLAN entry's comment (what vlan.set writes), else
+    its VLAN interface's comment, else the interface's name."""
+    comments: dict[int, str] = {}
+    for v in raw["bridge_vlans"]:
+        ids = vlan_ids(v.get("vlan-ids"))
+        comment = (v.get("comment") or "").strip()
+        if len(ids) == 1 and comment and not flag(v.get("dynamic")):
+            comments.setdefault(ids[0], comment)
     subnets: dict[str, str] = {}
     for a in raw["addresses"]:
         try:
@@ -459,10 +351,11 @@ def device_vlans(raw: dict[str, Any]) -> list[Vlan]:
         name = v.get("name")
         if not n or not 1 <= n <= 4094 or n in out:
             continue
-        out[n] = Vlan(id=n, name=name or None, interface=name or None, subnet=subnets.get(name))
+        label = comments.get(n) or (v.get("comment") or "").strip() or name
+        out[n] = Vlan(id=n, name=label or None, interface=name or None, subnet=subnets.get(name))
     for v in raw["bridge_vlans"]:
         for n in vlan_ids(v.get("vlan-ids")):
-            out.setdefault(n, Vlan(id=n))
+            out.setdefault(n, Vlan(id=n, name=comments.get(n)))
     return [out[k] for k in sorted(out)]
 
 
@@ -543,9 +436,9 @@ def arp(c: Client) -> list[ArpEntry]:
     return out
 
 
-def leases(c: Client, now: datetime) -> list[DhcpLease]:
+def leases(rows: list[dict[str, Any]], now: datetime) -> list[DhcpLease]:
     out = []
-    for r in as_list(c.get("/ip/dhcp-server/lease")):
+    for r in rows:
         if r.get("status") != "bound" or flag(r.get("disabled")):
             continue
         m = mac(r.get("active-mac-address") or r.get("mac-address"))
@@ -860,6 +753,7 @@ def collect(cfg: Config) -> list[Device]:
         gws: list[Gateway] = []
         bridges: set[str] = set()
         vlans: list[Vlan] = []
+        router: dict[str, Any] = {}
         if raw:
             known = {r.get("name") for r in raw["interfaces"] if r.get("name")}
             gws = gateways(routes, raw["addresses"], known)
@@ -874,6 +768,13 @@ def collect(cfg: Config) -> list[Device]:
             bridges = {i.name for i in ifaces if i.type == "bridge"}
             vlans = device_vlans(raw)
         now = datetime.now(timezone.utc)
+        lease_rows = optional(
+            "DHCP leases", missing, lambda: as_list(c.get("/ip/dhcp-server/lease")), None
+        )
+        if raw and gws:
+            router = optional(
+                "networks", missing, lambda: router_networks(c, raw, gws, lease_rows), {}
+            )
         clients = optional("wifi clients", missing, lambda: wifi(c), []) + optional(
             "wireless clients", missing, lambda: legacy_wireless(c), []
         )
@@ -903,10 +804,12 @@ def collect(cfg: Config) -> list[Device]:
             neighbors=optional("neighbors", missing, lambda: neighbors(c), []) or None,
             fdb=optional("bridge hosts", missing, lambda: fdb(c, bridges), []) or None,
             arp=optional("ARP", missing, lambda: arp(c), []) or None,
-            dhcp_leases=optional("DHCP leases", missing, lambda: leases(c, now), []) or None,
+            dhcp_leases=optional("DHCP leases", missing, lambda: leases(lease_rows or [], now), [])
+            or None,
             wireless_clients=clients or None,
             gateways=gws or None,
             vlans=vlans or None,
+            **router,
             temperatures=optional("health", missing, lambda: temperatures(c), []) or None,
             storage=storage(info) or None,
             firmware=optional("updates", missing, lambda: firmware(c, info, board), None),
@@ -918,13 +821,33 @@ def collect(cfg: Config) -> list[Device]:
         c.close()
 
 
-# --- changes -------------------------------------------------------------------
+# --- networks (router side) ----------------------------------------------------
 
-WRITE_POLICY = (
-    "the RouterOS user's group lacks the write policy: add it "
-    "(/user group set <group> policy=read,write,api,rest-api) to let Omini "
-    "enable and disable ports"
-)
+
+def wan_of(gws: list[Gateway], raw: dict[str, Any]) -> set[str]:
+    """The WANs (interfaces of the default routes) and the ports PPPoE runs on."""
+    wan = {g.interface for g in gws if g.interface}
+    for p in raw.get("pppoe") or []:
+        if p.get("name") in wan and p.get("interface"):
+            wan.add(p["interface"])
+    return wan
+
+
+def router_networks(
+    c: Client,
+    raw: dict[str, Any],
+    gws: list[Gateway],
+    lease_rows: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Each VLAN's network and the DHCP's fixed addresses, on a router."""
+    st = nets.read_state(c, wan_of(gws, raw), raw, lease_rows)
+    return {
+        "networks": nets.networks(st) or None,
+        "dhcp_reservations": nets.reservations(st) or None,
+    }
+
+
+# --- changes -------------------------------------------------------------------
 
 
 def ethernet_port(c: Client, name: str) -> dict[str, Any] | None:
@@ -938,37 +861,99 @@ def ethernet_port(c: Client, name: str) -> dict[str, Any] | None:
     return next((r for r in rows if r.get("name") == name), None)
 
 
-def apply(cfg: Config, change: Change) -> list[Device]:
-    """Enables or disables a port (port.enabled): sets only the port's
-    ``disabled`` property (PATCH /interface/ethernet/<id>), reads the port
-    again to check RouterOS took it, and returns the device as read after
-    the change. RouterOS saves every change as it is made: there is no
-    separate save step."""
-    if change.kind != "port.enabled" or not isinstance(change.value, bool):
+def port_enabled(c: Client, j: Journal, change: Change) -> None:
+    """Sets only the port's ``disabled`` property (PATCH /interface/ethernet/<id>)
+    and reads the port again to check RouterOS took it."""
+    if not isinstance(change.value, bool):
         raise PluginError(f"this plugin cannot apply {change.kind} with value {change.value!r}")
     name = change.port or ""
+    port = ethernet_port(c, name)
+    if port is None or not port.get(".id"):
+        raise PluginError(f"the device has no Ethernet port named {name or '(none)'}")
+    disabled = flag(port.get("disabled"))
+    if disabled is None:
+        raise PluginError(f"RouterOS did not say whether {name} is enabled: nothing was changed")
+    if disabled != change.value:
+        return
+    j.set(
+        "/interface/ethernet",
+        port,
+        {"disabled": "false" if change.value else "true"},
+        f"the change to {name}",
+    )
+    after = ethernet_port(c, name)
+    if after is None or flag(after.get("disabled")) is not (not change.value):
+        raise PluginError(f"RouterOS did not apply the change to {name}")
+
+
+def router_state(c: Client) -> nets.State:
+    """The router's networks as a change sees them (its WANs from the default routes)."""
+    missing: list[str] = []
+    raw = read_interfaces(c, missing)
+    known = {r.get("name") for r in raw["interfaces"] if r.get("name")}
+    routes = optional("routes", missing, lambda: default_routes(c), [])
+    return nets.read_state(c, wan_of(gateways(routes, raw["addresses"], known), raw), raw)
+
+
+def change_network(c: Client, j: Journal, change: Change, mgmt: str) -> None:
+    value = change.value if isinstance(change.value, dict) else None
+    if value is None:
+        raise PluginError(f"this plugin cannot apply {change.kind} with value {change.value!r}")
+    st = router_state(c)
+    if change.kind == "network.set":
+        nets.apply_set(j, st, value, mgmt)
+        if not nets.matches(router_state(c), value):
+            raise PluginError(f"RouterOS did not apply the network of VLAN {value['vlan']}")
+    elif change.kind == "network.delete":
+        vid = int(value["vlan"])
+        nets.apply_delete(j, st, vid, mgmt)
+        if any(n.vlan == vid for n in nets.nets(router_state(c))):
+            raise PluginError(f"RouterOS did not remove the network of VLAN {vid}")
+    elif change.kind == "reservation.set":
+        nets.reserve(j, st, value)
+        m, ip = nets.norm_mac(value.get("mac")), str(value.get("ip"))
+        if not any(r["mac"] == m and r["ip"] == ip for r in nets.reservations(router_state(c))):
+            raise PluginError(f"RouterOS did not apply the reservation of {m}")
+    else:
+        m = nets.norm_mac(value.get("mac"))
+        nets.unreserve(j, st, m)
+        if any(r["mac"] == m for r in nets.reservations(router_state(c))):
+            raise PluginError(f"RouterOS did not remove the reservation of {m}")
+
+
+def apply(cfg: Config, change: Change) -> list[Device]:
+    """Applies one change, reads the device again to check it, undoes what
+    it wrote if the device does not read back as asked, and returns the
+    device as read after the change. RouterOS keeps every change as it is
+    made: there is no separate save step.
+
+    port.enabled: a port's ``disabled``. port.vlans, vlan.set, vlan.delete:
+    the bridge's VLAN table and ports (see vlans.py). network.set,
+    network.delete, reservation.set, reservation.delete: the router's VLAN
+    interfaces, addresses, DHCP and firewall (see networks.py)."""
     c = client_from(cfg)
+    j = Journal(c)
     try:
-        port = ethernet_port(c, name)
-        if port is None or not port.get(".id"):
-            raise PluginError(f"the device has no Ethernet port named {name or '(none)'}")
-        path = "/interface/ethernet/" + str(port[".id"])
-        disabled = flag(port.get("disabled"))
-        if disabled is None:
-            raise PluginError(
-                f"RouterOS did not say whether {name} is enabled: nothing was changed"
-            )
-        if disabled == change.value:
-            try:
-                c.patch(path, {"disabled": "false" if change.value else "true"})
-            except Forbidden as e:
-                raise PluginError(WRITE_POLICY) from e
-            except NotFound as e:
-                detail = e.args[1] if len(e.args) > 1 and e.args[1] else "bad request"
-                raise PluginError(f"RouterOS refused to change {name}: {detail}") from e
-            after = ethernet_port(c, name)
-            if after is None or flag(after.get("disabled")) is not (not change.value):
-                raise PluginError(f"RouterOS did not apply the change to {name}")
+        if change.kind == "port.enabled":
+            port_enabled(c, j, change)
+        elif change.kind == "port.vlans":
+            vlans_mod.set_port_vlans(c, j, change.port or "", change.value)
+        elif change.kind == "vlan.set":
+            vlans_mod.set_vlan(c, j, change.value)
+        elif change.kind == "vlan.delete":
+            vlans_mod.delete_vlan(c, j, change.value)
+        elif change.kind in (
+            "network.set",
+            "network.delete",
+            "reservation.set",
+            "reservation.delete",
+        ):
+            change_network(c, j, change, urlparse(c.base).hostname or "")
+        else:
+            raise PluginError(f"this plugin cannot apply {change.kind}")
+    except Exception:
+        j.rollback()
+        raise
     finally:
         c.close()
     return collect(cfg)

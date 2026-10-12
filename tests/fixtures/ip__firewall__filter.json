@@ -1,0 +1,10 @@
+[
+{".id":"*1","chain":"input","action":"accept","connection-state":"established,related,untracked","comment":"defconf: accept established,related,untracked","bytes":"1000","packets":"10","log":"false","log-prefix":"","invalid":"false","dynamic":"false","disabled":"false"},
+{".id":"*2","chain":"input","action":"drop","connection-state":"invalid","comment":"defconf: drop invalid","bytes":"0","packets":"0","log":"false","log-prefix":"","invalid":"false","dynamic":"false","disabled":"false"},
+{".id":"*3","chain":"input","action":"accept","protocol":"icmp","comment":"defconf: accept ICMP","bytes":"0","packets":"0","log":"false","log-prefix":"","invalid":"false","dynamic":"false","disabled":"false"},
+{".id":"*4","chain":"input","action":"drop","in-interface-list":"!LAN","comment":"defconf: drop all not coming from LAN","bytes":"0","packets":"0","log":"false","log-prefix":"","invalid":"false","dynamic":"false","disabled":"false"},
+{".id":"*5","chain":"forward","action":"fasttrack-connection","connection-state":"established,related","hw-offload":"true","comment":"defconf: fasttrack","bytes":"0","packets":"0","log":"false","log-prefix":"","invalid":"false","dynamic":"false","disabled":"false"},
+{".id":"*6","chain":"forward","action":"accept","connection-state":"established,related,untracked","comment":"defconf: accept established,related, untracked","bytes":"0","packets":"0","log":"false","log-prefix":"","invalid":"false","dynamic":"false","disabled":"false"},
+{".id":"*7","chain":"forward","action":"drop","connection-state":"invalid","comment":"defconf: drop invalid","bytes":"0","packets":"0","log":"false","log-prefix":"","invalid":"false","dynamic":"false","disabled":"false"},
+{".id":"*8","chain":"forward","action":"drop","connection-state":"new","connection-nat-state":"!dstnat","in-interface-list":"WAN","comment":"defconf: drop all from WAN not DSTNATed","bytes":"0","packets":"0","log":"false","log-prefix":"","invalid":"false","dynamic":"false","disabled":"false"}
+]

@@ -1,0 +1,3 @@
+[
+{".id":"*1","name":"defconf","interface":"bridge","address-pool":"default-dhcp","lease-time":"30m","authoritative":"yes","use-radius":"no","dynamic":"false","invalid":"false","disabled":"false"}
+]

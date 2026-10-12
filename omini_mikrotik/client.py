@@ -54,8 +54,9 @@ class Client:
         return self._send("GET", path)
 
     def post(self, path: str, body: dict[str, Any]) -> Any:
-        """Runs a console command. Only read-only commands are ever sent
-        (``/interface/ethernet/monitor`` with ``once``)."""
+        """Runs a console command. A collection only sends read-only ones
+        (``/interface/ethernet/monitor`` with ``once``); a change Omini asked
+        for may send ``add`` (with ``place-before``) or ``/ip/dns/set``."""
         return self._send("POST", path, body)
 
     def patch(self, path: str, body: dict[str, Any]) -> Any:
@@ -63,6 +64,16 @@ class Client:
         ``{"disabled": "true"}`` (the console's ``set``): the properties not
         sent stay as they are. Used only to apply a change Omini asked for."""
         return self._send("PATCH", path, body)
+
+    def put(self, path: str, body: dict[str, Any]) -> Any:
+        """Adds an item to a menu (the console's ``add``); RouterOS answers the
+        new item with its ``.id``. Used only to apply a change Omini asked for."""
+        return self._send("PUT", path, body)
+
+    def delete(self, path: str) -> Any:
+        """Removes one item, e.g. ``/ip/address/*3`` (the console's ``remove``).
+        Used only to apply a change Omini asked for."""
+        return self._send("DELETE", path)
 
     def _send(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         try:

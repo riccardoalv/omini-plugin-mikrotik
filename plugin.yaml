@@ -1,6 +1,6 @@
 id: mikrotik
 name: MikroTik RouterOS
-version: 0.2.0
+version: 0.3.0
 protocol: 1
 entrypoint: main.py
 timeout_s: 60
@@ -8,12 +8,22 @@ description: >-
   MikroTik routers, switches and access points through the RouterOS v7 REST
   API: ports with link speed, traffic, SFP diagnostics and VLANs, bridge MAC
   table, ARP, DHCP leases, MNDP/LLDP/CDP neighbors, Wi-Fi clients, default
-  gateways, CPU, memory, temperatures and pending updates, and enables or
-  disables Ethernet ports (applied, then checked; RouterOS keeps it).
+  gateways, CPU, memory, temperatures and pending updates. It changes, when
+  asked: Ethernet ports on or off, a bridge port's VLANs and the bridge's
+  VLANs (VLAN filtering must be on), and a router's VLAN networks (interface,
+  gateway, DHCP, access rules, mDNS) and DHCP reservations; each change is
+  read back and undone if RouterOS did not take it.
 author: Omini
 homepage: https://github.com/riccardoalv/omini-plugin-mikrotik
 changes:
   - port.enabled
+  - port.vlans
+  - vlan.set
+  - vlan.delete
+  - network.set
+  - network.delete
+  - reservation.set
+  - reservation.delete
 fields:
   - key: url
     type: url
@@ -26,7 +36,7 @@ fields:
     required: true
     help: >-
       A user whose group has the policies read, write, api and rest-api (write
-      is needed only to enable or disable ports): see the plugin's README.
+      is needed only for changes): see the plugin's README.
   - key: password
     type: secret
     label: Password
