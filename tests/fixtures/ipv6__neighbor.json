@@ -2,5 +2,7 @@
 {".id":"*1","address":"2001:db8:bd7c:8800::a1","interface":"bridge","mac-address":"AA:BB:CC:00:00:01","router":"false","status":"reachable","dynamic":"true"},
 {".id":"*2","address":"2001:db8:bd7c:8800:5c1e:94ff:3a01:77d2","interface":"bridge","mac-address":"AA:BB:CC:00:00:01","router":"false","status":"stale","dynamic":"true"},
 {".id":"*3","address":"fe80::a8bb:ccff:fe00:1","interface":"bridge","mac-address":"AA:BB:CC:00:00:01","router":"false","status":"reachable","dynamic":"true"},
-{".id":"*4","address":"2001:db8:bd7c:8800::b2","interface":"bridge","mac-address":"AA:BB:CC:00:00:02","router":"false","status":"reachable","dynamic":"true"}
+{".id":"*4","address":"2001:db8:bd7c:8800::b2","interface":"bridge","mac-address":"AA:BB:CC:00:00:02","router":"false","status":"reachable","dynamic":"true"},
+{".id":"*5","address":"2001:db8:bd7c:8800::99","interface":"bridge","router":"false","status":"incomplete","dynamic":"true"},
+{".id":"*6","address":"2001:db8:bd7c:8800::98","interface":"bridge","mac-address":"AA:BB:CC:00:00:09","router":"false","status":"failed","dynamic":"true"}
 ]

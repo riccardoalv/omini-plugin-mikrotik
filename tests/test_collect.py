@@ -273,6 +273,35 @@ def test_optional_menus_do_not_fail_the_collection(routeros, cfg):
     assert connection_test(cfg).endswith(". Cannot read: ARP")
 
 
+def test_ipv6_neighbors(routeros, cfg):
+    [rt] = collect(cfg)
+    # Like ARP: MACs normalized, failed and incomplete entries left out.
+    assert [(n.ip, n.mac, n.interface) for n in rt.ndp] == [
+        ("2001:db8:bd7c:8800::a1", "aa:bb:cc:00:00:01", "bridge"),
+        ("2001:db8:bd7c:8800:5c1e:94ff:3a01:77d2", "aa:bb:cc:00:00:01", "bridge"),
+        ("fe80::a8bb:ccff:fe00:1", "aa:bb:cc:00:00:01", "bridge"),
+        ("2001:db8:bd7c:8800::b2", "aa:bb:cc:00:00:02", "bridge"),
+    ]
+
+
+def test_ipv6_neighbors_left_out_when_unreadable(routeros, cfg):
+    del routeros.routes["/rest/ipv6/neighbor"]  # no IPv6 package: 400
+    [rt] = collect(cfg)
+    assert rt.ndp is None and rt.arp
+    routeros.fail_get = {"/rest/ipv6/neighbor"}
+    [rt] = collect(cfg)
+    assert rt.ndp is None and rt.arp
+
+
+def test_ipv6_neighbors_with_an_older_omini(routeros, cfg, monkeypatch):
+    import omini_mikrotik.collect as m
+
+    fields = {k: v for k, v in m.Device.model_fields.items() if k != "ndp"}
+    monkeypatch.setattr(m.Device, "model_fields", fields)
+    collect(cfg)
+    assert ("GET", "/rest/ipv6/neighbor") not in routeros.calls
+
+
 def test_a_failing_monitor_does_not_fail_the_collection(routeros, cfg, monkeypatch):
     import omini_mikrotik.collect as m
 

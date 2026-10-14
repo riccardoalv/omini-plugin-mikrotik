@@ -51,6 +51,7 @@ class FakeRouterOS:
         self.read_only = False  # the user's group has no write policy
         self.ignore_changes = False  # answers 200 to a write but changes nothing
         self.fail = {}  # "METHOD /rest/path" → the detail of a 400 answer
+        self.fail_get = set()  # paths whose GET answers 500
         self.ids = itertools.count(0x100)
         self.wol = []  # bodies of POST /tool/wol
         self.export = (FIXTURES / "export.rsc").read_text()
@@ -90,6 +91,8 @@ class FakeRouterOS:
         if method == "GET":
             if any(path.startswith(p) for p in self.forbidden):
                 return httpx.Response(403, json=FORBIDDEN)
+            if path in self.fail_get:
+                return httpx.Response(500, json={"error": 500, "message": "Internal Error"})
             if path not in self.routes:
                 return httpx.Response(
                     400,

@@ -499,8 +499,24 @@ def gateways(
 
 
 def arp(c: Client) -> list[ArpEntry]:
+    return resolved(as_list(c.get("/ip/arp")))
+
+
+def ndp(c: Client) -> list[ArpEntry]:
+    """IPv6 neighbours, so flows over IPv6 reach the device's MAC. Extra data:
+    an error reading it leaves it out instead of failing the collection."""
+    try:
+        rows = as_list(c.get("/ipv6/neighbor"))
+    except PluginError as e:
+        log.info("could not read the IPv6 neighbors: %s", e)
+        return []
+    return resolved(rows)
+
+
+def resolved(rows: list[dict[str, Any]]) -> list[ArpEntry]:
+    """Resolved entries of /ip/arp or /ipv6/neighbor (same fields)."""
     out = []
-    for r in as_list(c.get("/ip/arp")):
+    for r in rows:
         m = mac(r.get("mac-address"))
         status = str(r.get("status") or "")
         if not m or not r.get("address") or flag(r.get("invalid")) or flag(r.get("disabled")):
@@ -509,6 +525,13 @@ def arp(c: Client) -> list[ArpEntry]:
             continue
         out.append(ArpEntry(ip=r["address"], mac=m, interface=r.get("interface") or None))
     return out
+
+
+def ndp_field(c: Client, missing: list[str]) -> dict[str, Any]:
+    """{"ndp": ...} for an Omini that knows the field (an older one refuses it)."""
+    if "ndp" not in Device.model_fields:
+        return {}
+    return {"ndp": optional("IPv6 neighbors", missing, lambda: ndp(c), []) or None}
 
 
 def leases(rows: list[dict[str, Any]], now: datetime) -> list[DhcpLease]:
@@ -885,6 +908,7 @@ def collect(cfg: Config) -> list[Device]:
             neighbors=optional("neighbors", missing, lambda: neighbors(c), []) or None,
             fdb=optional("bridge hosts", missing, lambda: fdb(c, bridges), []) or None,
             arp=optional("ARP", missing, lambda: arp(c), []) or None,
+            **ndp_field(c, missing),
             dhcp_leases=optional("DHCP leases", missing, lambda: leases(lease_rows or [], now), [])
             or None,
             wireless_clients=clients or None,

@@ -1,14 +1,14 @@
 id: mikrotik
 name: MikroTik RouterOS
-version: 0.3.1
+version: 0.4.0
 protocol: 1
 entrypoint: main.py
 timeout_s: 60
 description: >-
   MikroTik routers, switches and access points through the RouterOS v7 REST
   API: ports with link speed, traffic, SFP diagnostics and VLANs, bridge MAC
-  table, ARP, DHCP leases, MNDP/LLDP/CDP neighbors, Wi-Fi clients, default
-  gateways, CPU, memory, temperatures and pending updates. It changes, when
+  table, ARP, IPv6 neighbors, DHCP leases, MNDP/LLDP/CDP neighbors, Wi-Fi
+  clients, default gateways, CPU, memory, temperatures and pending updates. It changes, when
   asked: Ethernet ports on or off, a bridge port's VLANs and the bridge's
   VLANs (VLAN filtering must be on), and a router's VLAN networks (interface,
   gateway, DHCP, access rules, mDNS), DHCP reservations, local DNS names

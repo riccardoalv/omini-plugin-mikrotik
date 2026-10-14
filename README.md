@@ -20,6 +20,7 @@
 | Bridge VLAN table (PVID, tagged ports), VLAN interfaces with their subnets | Port VLAN membership, VLAN list |
 | Bridge host table (MAC → port, VLAN) | Which client sits behind which port |
 | ARP table, bound DHCP leases | Clients and their names |
+| IPv6 neighbors (`/ipv6/neighbor`) | Which IPv6 address belongs to which MAC, so traffic over IPv6 reaches the right device |
 | Neighbors (MNDP, LLDP, CDP) | Links between devices |
 | Wi-Fi clients (`wifi` / wifiwave2 and legacy `wireless`): SSID, band, signal, link rates, current traffic (`wifi` only) | Wi-Fi clients on the map |
 | Default routes of the main table | WAN uplinks (`wan` interface) and gateway status |
@@ -178,6 +179,7 @@ A collection only reads: every request is a `GET` to `https://<router>/rest/<men
 | `/ip/address` | interface IPs, VLAN subnets | [IP Addressing](https://help.mikrotik.com/docs/display/ROS/IP+Addressing) |
 | `/ip/route` | default routes of the `main` table → WAN interface and gateway status (`active`) | [IP Routing](https://help.mikrotik.com/docs/display/ROS/IP+Routing) |
 | `/ip/arp` | ARP (failed / incomplete entries left out) | [ARP](https://help.mikrotik.com/docs/display/ROS/ARP) |
+| `/ipv6/neighbor` | IPv6 neighbors, like ARP (entries without a MAC, failed or incomplete left out); none when the IPv6 package is off or the read fails | [IPv6 Neighbor Discovery](https://help.mikrotik.com/docs/display/ROS/IPv6+Neighbor+Discovery) |
 | `/ip/dhcp-server/lease` | leases with `status=bound`; static leases (reservations) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
 | `/ip/dhcp-server`, `/ip/pool` | the DHCP server of each network and its range (routers) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
 | `/ip/firewall/filter` | the rules of each network (its access; routers) | [Filter](https://help.mikrotik.com/docs/display/ROS/Filter) |
@@ -185,7 +187,7 @@ A collection only reads: every request is a `GET` to `https://<router>/rest/<men
 | `/ip/dns/static` | local DNS names (A records) | [DNS](https://help.mikrotik.com/docs/display/ROS/DNS) |
 | `/ip/dhcp-server/network` | the DHCP networks (gateway, `domain`) (routers) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
 | `/ip/firewall/address-list` | the `omini_paused` and `omini-private` lists (routers) | [Address-lists](https://help.mikrotik.com/docs/display/ROS/Address-lists) |
-| `/ipv6/firewall/filter`, `/ipv6/firewall/address-list`, `/ipv6/address`, `/ipv6/neighbor` | only for a pause: its IPv6 rule, `omini-private6`, the LAN-side prefixes, the device's IPv6 addresses (routers) | [Firewall](https://help.mikrotik.com/docs/display/ROS/Firewall) |
+| `/ipv6/firewall/filter`, `/ipv6/firewall/address-list`, `/ipv6/address`, `/ipv6/neighbor` | for a pause: its IPv6 rule, `omini-private6`, the LAN-side prefixes, the device's IPv6 addresses (routers) | [Firewall](https://help.mikrotik.com/docs/display/ROS/Firewall) |
 | `POST /interface/bridge/monitor` (`once`) | the root bridge ID | [Spanning Tree Protocol](https://help.mikrotik.com/docs/spaces/ROS/pages/21725254/Spanning+Tree+Protocol) |
 | `/ip/neighbor` | MNDP / LLDP / CDP neighbors | [Neighbor discovery](https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery) |
 | `/interface/wifi`, `/interface/wifi/registration-table` | Wi-Fi clients (`wifi` package, RouterOS 7.13+) | [WiFi](https://help.mikrotik.com/docs/spaces/ROS/pages/224559120/WiFi) |
