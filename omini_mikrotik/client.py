@@ -21,6 +21,11 @@ class NotFound(Exception):
     """The menu does not exist on this device (package or feature missing)."""
 
 
+class Failed(PluginError):
+    """RouterOS did not answer in time or answered a server error (5xx): a
+    required read fails with it, an optional one is skipped."""
+
+
 class Client:
     def __init__(
         self,
@@ -83,7 +88,7 @@ class Client:
         except httpx.ConnectError as e:
             raise PluginError(f"cannot connect to {self.base}: {e}") from e
         except httpx.TimeoutException as e:
-            raise PluginError(f"{self.base} did not answer in time") from e
+            raise Failed(f"{self.base} did not answer {path} in time") from e
         except httpx.HTTPError as e:
             raise PluginError(f"request to {self.base} failed: {e}") from e
         if r.status_code == 401:
@@ -96,7 +101,7 @@ class Client:
             # ("no such command or directory").
             raise NotFound(path, detail)
         if r.status_code >= 400:
-            raise PluginError(f"RouterOS answered {r.status_code} for {path}")
+            raise Failed(f"RouterOS answered {r.status_code} for {path}")
         if not r.content:
             return None
         try:

@@ -314,6 +314,24 @@ def test_a_failing_monitor_does_not_fail_the_collection(routeros, cfg, monkeypat
     assert ports["ether1"].speed_mbps is None and ports["ether2"].up is True
 
 
+def test_a_failing_optional_menu_is_skipped(routeros, cfg):
+    routeros.fail_get = {"/rest/ip/neighbor", "/rest/interface/bridge/host"}  # 500
+    routeros.slow_get = {"/rest/system/health", "/rest/ip/dhcp-server/lease"}
+    [rt] = collect(cfg)
+    assert rt.neighbors is None and rt.fdb is None and rt.temperatures is None
+    assert rt.dhcp_leases is None and rt.arp and rt.interfaces
+
+
+def test_a_failing_required_read_fails(routeros, cfg):
+    routeros.fail_get = {"/rest/system/resource"}
+    with pytest.raises(PluginError, match="answered 500 for /system/resource"):
+        collect(cfg)
+    routeros.fail_get = set()
+    routeros.slow_get = {"/rest/system/resource"}
+    with pytest.raises(PluginError, match="did not answer /system/resource in time"):
+        collect(cfg)
+
+
 def test_switch_and_ap_roles(routeros, cfg):
     routeros.routes["/rest/ip/route"] = []
     [rt] = collect(cfg)
