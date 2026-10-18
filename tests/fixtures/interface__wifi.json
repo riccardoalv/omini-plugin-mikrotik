@@ -1,4 +1,5 @@
 [
-{".id":"*C","name":"wifi1","default-name":"wifi1","configuration.mode":"ap","configuration.ssid":"Home","channel.band":"5ghz-ax","channel.width":"20/40/80mhz","mac-address":"48:A9:8A:11:22:10","disabled":"false","running":"true","inactive":"false","bound":"true"},
-{".id":"*E","name":"wifi2","default-name":"wifi2","configuration.mode":"ap","configuration.ssid":"Home","channel.band":"2ghz-ax","channel.frequency":"2437","channel.width":"20mhz","mac-address":"48:A9:8A:11:22:11","disabled":"false","running":"true","inactive":"false","bound":"true"}
+{".id":"*C","name":"wifi1","default-name":"wifi1","configuration.mode":"ap","configuration.ssid":"Home","security.authentication-types":"wpa2-psk,wpa3-psk","channel.band":"5ghz-ax","channel.width":"20/40/80mhz","mac-address":"48:A9:8A:11:22:10","disabled":"false","running":"true","inactive":"false","bound":"true"},
+{".id":"*E","name":"wifi2","default-name":"wifi2","configuration.mode":"ap","configuration.ssid":"Home","security.authentication-types":"wpa2-psk,wpa3-psk","datapath.bridge":"bridge","channel.band":"2ghz-ax","channel.frequency":"2437","channel.width":"20mhz","mac-address":"48:A9:8A:11:22:11","disabled":"false","running":"true","inactive":"false","bound":"true"},
+{".id":"*10","name":"wifi-guest","master-interface":"wifi1","configuration":"guest","security":"guest-sec","datapath.vlan-id":"30","mac-address":"4A:A9:8A:11:22:10","disabled":"false","running":"true","inactive":"false","bound":"true"}
 ]

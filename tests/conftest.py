@@ -206,6 +206,8 @@ class FakeRouterOS:
                     "invalid": "false",
                 }
             )
+        if menu == "/rest/interface/wifi" and "name" not in row:
+            row["name"] = f"wifi{len(self.routes.get(menu, [])) + 1}"  # RouterOS names it
         if menu == "/rest/interface/vlan":
             self.routes["/rest/interface"].append(
                 {".id": item, "name": body["name"], "type": "vlan", "running": "true"}

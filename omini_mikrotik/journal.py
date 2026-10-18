@@ -46,6 +46,8 @@ READ_ONLY = {
     "host-name",
     "radius",
     "blocked",
+    "bound",
+    "master",
 }
 
 
@@ -85,16 +87,28 @@ class Journal:
         self.undo.append(("remove", menu, item))
         return item
 
-    def set(self, menu: str, row: dict[str, Any], body: dict[str, str], what: str) -> bool:
+    def set(
+        self,
+        menu: str,
+        row: dict[str, Any],
+        body: dict[str, str],
+        what: str,
+        secret: tuple[str, ...] = (),
+    ) -> bool:
         """Sets the properties of body that differ from row (PATCH); False
-        when nothing differed (nothing is sent)."""
+        when nothing differed (nothing is sent). A ``secret`` property (a
+        passphrase) is never kept in row, and its undo is left out when
+        RouterOS did not show its old value (a user without the sensitive
+        policy): putting back an empty passphrase would be worse."""
         changed = {k: v for k, v in body.items() if text(row.get(k)) != v}
         if not changed:
             return False
         item = text(row.get(".id"))
         self._write(what, lambda: self.c.patch(f"{menu}/{item}", changed))
-        self.undo.append(("set", f"{menu}/{item}", {k: text(row.get(k)) for k in changed}))
-        row.update(changed)
+        old = {k: text(row.get(k)) for k in changed if k not in secret or k in row}
+        if old:
+            self.undo.append(("set", f"{menu}/{item}", old))
+        row.update({k: v for k, v in changed.items() if k not in secret})
         return True
 
     def set_menu(self, menu: str, current: dict[str, Any], body: dict[str, str], what: str) -> bool:

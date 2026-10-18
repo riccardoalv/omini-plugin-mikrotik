@@ -38,7 +38,7 @@ from omini_sdk import (
 )
 
 from omini_mikrotik import backup as backup_mod
-from omini_mikrotik import forwards, services, wireless
+from omini_mikrotik import forwards, services, wifinets, wireless
 from omini_mikrotik import networks as nets
 from omini_mikrotik import vlans as vlans_mod
 from omini_mikrotik.client import Client, Failed, Forbidden, NotFound
@@ -1019,6 +1019,7 @@ def collect(cfg: Config) -> list[Device]:
         clients = optional("wifi clients", missing, lambda: wifi(c), []) + optional(
             "wireless clients", missing, lambda: legacy_wireless(c), []
         )
+        wifi_pkgs = optional("Wi-Fi interfaces", missing, lambda: wireless.read_packages(c), [])
         host = urlparse(c.base).hostname or c.base
         has_wireless = any(i.type == "wireless" for i in ifaces)
         role = "router" if routing else "ap" if has_wireless else "switch"
@@ -1053,7 +1054,8 @@ def collect(cfg: Config) -> list[Device]:
             )
             or None,
             wireless_clients=clients or None,
-            **wireless.radios_field(c, missing),
+            **wireless.radios_field(c, wifi_pkgs),
+            **wifinets.networks_field(c, wifi_pkgs),
             gateways=gws or None,
             vlans=vlans or None,
             **router,
@@ -1240,7 +1242,8 @@ def apply(cfg: Config, change: Change) -> list[Device]:
     dns.delete, wol.send, pause.set, pause.delete: /ip/dns/static,
     /tool/wol, the omini_paused address list and the pause rules of both
     families (see services.py). wifi.channel: a radio's fixed frequency
-    (see wireless.py)."""
+    (see wireless.py). wifi.set, wifi.delete: the Wi-Fi interfaces of a
+    standalone access point (see wifinets.py)."""
     c = client_from(cfg)
     j = Journal(c)
     try:
@@ -1263,6 +1266,10 @@ def apply(cfg: Config, change: Change) -> list[Device]:
             change_service(c, j, change)
         elif change.kind == "wifi.channel":
             wireless.set_channel(c, j, change.value)
+        elif change.kind == "wifi.set":
+            wifinets.wifi_set(c, j, change.value)
+        elif change.kind == "wifi.delete":
+            wifinets.wifi_delete(c, j, change.value)
         else:
             raise PluginError(f"this plugin cannot apply {change.kind}")
     except Exception:

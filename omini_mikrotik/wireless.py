@@ -214,21 +214,10 @@ def station(pkg: Package, r: dict[str, Any]) -> bool:
     return pkg.mode(r).startswith("station") and not flag(r.get("disabled"))
 
 
-def radios_field(c: Client, missing: list[str]) -> dict[str, Any]:
-    """{"radios", "wireless_uplink"} for an Omini that knows the fields.
-    Optional: a forbidden, missing or failing read leaves them out."""
-    if "radios" not in Device.model_fields:
-        return {}
-    try:
-        pkgs = read_packages(c)
-    except Forbidden:
-        log.warning("no permission to read the Wi-Fi interfaces")
-        missing.append("Wi-Fi radios")
-        return {}
-    except Failed as e:
-        log.warning("could not read the Wi-Fi interfaces: %s", e)
-        return {}
-    if not any(p.rows for p in pkgs):
+def radios_field(c: Client, pkgs: list[Package]) -> dict[str, Any]:
+    """{"radios", "wireless_uplink"} for an Omini that knows the fields; none
+    when the device has no Wi-Fi (or its interfaces could not be read)."""
+    if "radios" not in Device.model_fields or not any(p.rows for p in pkgs):
         return {}
     out = [x for p in pkgs for r in p.radios() if (x := radio(c, p, r)) is not None]
     uplink = any(station(p, r) for p in pkgs for r in p.rows)
