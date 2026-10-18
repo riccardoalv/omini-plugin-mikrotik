@@ -308,7 +308,11 @@ def build_interfaces(
         if v.get("bridge") not in filtering or not enabled(v):
             continue
         ids = vlan_ids(v.get("vlan-ids"))
-        ports = names(v.get("current-tagged") or v.get("tagged"))
+        # The configured members, as port.vlans writes and verifies them
+        # (current-tagged leaves out a port that is down); a dynamic entry
+        # only has its current ones.
+        dynamic = flag(v.get("dynamic"))
+        ports = names(v.get("current-tagged") if dynamic else v.get("tagged"))
         for port in ports:
             tagged.setdefault(port, set()).update(ids)
     ips: dict[str, list[str]] = {}

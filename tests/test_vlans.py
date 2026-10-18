@@ -67,6 +67,17 @@ def test_makes_a_port_a_trunk_with_a_native_vlan(routeros, cfg):
     assert vlans_of(rt, "ether2") == (1, [20])
 
 
+def test_a_down_port_reports_and_verifies_its_configured_vlans(routeros, cfg):
+    # RouterOS leaves a port that is down out of current-tagged.
+    for vid in ("20", "30-31"):
+        e = entry(routeros, vid)
+        e["current-tagged"] = ",".join(p for p in e["tagged"].split(",") if p != "sfp-sfpplus1")
+    [rt] = collect(cfg)
+    assert vlans_of(rt, "sfp-sfpplus1") == (1, [20, 30, 31])
+    [rt] = apply(cfg, change("port.vlans", {"untagged": 1, "tagged": [20]}, "office"))
+    assert vlans_of(rt, "office") == (1, [20])
+
+
 def test_an_access_port_becomes_a_tagged_only_trunk(routeros, cfg):
     [rt] = apply(cfg, change("port.vlans", {"untagged": None, "tagged": [20]}, "office"))
     e = entry(routeros, "20")
