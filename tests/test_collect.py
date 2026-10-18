@@ -343,6 +343,27 @@ def test_switch_and_ap_roles(routeros, cfg):
     assert rt.role == "switch"
 
 
+def test_a_switch_with_a_management_default_route(routeros, cfg):
+    # A CRS: one address on the bridge, its default route through it.
+    routeros.routes["/rest/ip/address"] = [routeros.row("/ip/address", interface="bridge")]
+    routeros.routes["/rest/ip/route"] = [
+        {"dst-address": "0.0.0.0/0", "gateway": "192.168.88.254", "active": "true"}
+    ]
+    routeros.routes["/rest/interface"] = [
+        r for r in routeros.routes["/rest/interface"] if r["type"] != "wifi"
+    ]
+    [sw] = collect(cfg)
+    assert sw.role == "switch" and sw.gateways is None and sw.networks is None
+    assert not any(i.wan for i in sw.interfaces)
+    # The same on a management VLAN.
+    routeros.routes["/rest/ip/address"] = [
+        {"address": "10.0.99.2/24", "interface": "vlan20", "disabled": "false"}
+    ]
+    routeros.routes["/rest/ip/route"][0]["gateway"] = "10.0.99.1"
+    [sw] = collect(cfg)
+    assert sw.role == "switch" and not any(i.wan for i in sw.interfaces)
+
+
 def test_connection_test(routeros, cfg):
     assert connection_test(cfg) == "Connected to core-router (RouterOS 7.15.3, RB5009UG+S+)"
 

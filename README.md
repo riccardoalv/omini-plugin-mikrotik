@@ -25,7 +25,7 @@
 | Wi-Fi clients (`wifi` / wifiwave2 and legacy `wireless`): SSID, band, signal, link rates, current traffic (`wifi` only) | Wi-Fi clients on the map |
 | Default routes of the main table | WAN uplinks (`wan` interface) and gateway status |
 
-Role: **router** when the device has a default route; otherwise **ap** if it has Wi-Fi interfaces, else **switch**.
+Role: **router** when the device has a default route and a LAN-side network besides the interface the route leaves through (a private, static address on another bridge, VLAN or port); otherwise **ap** if it has Wi-Fi interfaces, else **switch**. A switch or access point whose default route goes out through its management address (the bridge or a management VLAN) is not a router: its route is no WAN and is not reported as a gateway.
 
 ## What it changes
 
@@ -56,7 +56,7 @@ An entry of the bridge VLAN table may hold several VLANs (`vlan-ids=30-31` or `1
 
 ### A router's networks (`network.set`, `network.delete`)
 
-On a **router** (a device with a default route), Omini shows each VLAN's network: every private, statically addressed interface on the LAN side (never the WAN, the interface of a default route, nor a tunnel): a VLAN interface (`/interface/vlan`) serves its VLAN, the bridge (or a port) with the LAN address is the untagged LAN, VLAN 1. For each: its name (the VLAN interface's comment, else the address's), the gateway (`/ip/address`), DHCP (the `/ip/dhcp-server` on the interface and the first range of its `/ip/pool`), access and mDNS (below).
+On a **router** (see the role above), Omini shows each VLAN's network: every private, statically addressed interface on the LAN side (never the WAN, the interface of a default route, nor a tunnel): a VLAN interface (`/interface/vlan`) serves its VLAN, the bridge (or a port) with the LAN address is the untagged LAN, VLAN 1. For each: its name (the VLAN interface's comment, else the address's), the gateway (`/ip/address`), DHCP (the `/ip/dhcp-server` on the interface and the first range of its `/ip/pool`), access and mDNS (below).
 
 **Create or change a network** (`network.set`):
 

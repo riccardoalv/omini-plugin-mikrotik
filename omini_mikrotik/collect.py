@@ -861,9 +861,13 @@ def collect(cfg: Config) -> list[Device]:
         vlans: list[Vlan] = []
         router: dict[str, Any] = {}
         root: str | None = None
+        routing = bool(routes)  # the interfaces unread: the default route alone says it
         if raw:
             known = {r.get("name") for r in raw["interfaces"] if r.get("name")}
             gws = gateways(routes, raw["addresses"], known)
+            routing = routes_lans(raw, gws)
+            if not routing:
+                gws = []  # a switch's or AP's management route is no WAN
             wan = {g.interface for g in gws if g.interface}
             ports = [
                 r["name"]
@@ -888,7 +892,7 @@ def collect(cfg: Config) -> list[Device]:
         )
         host = urlparse(c.base).hostname or c.base
         has_wireless = any(i.type == "wireless" for i in ifaces)
-        role = "router" if routes else "ap" if has_wireless else "switch"
+        role = "router" if routing else "ap" if has_wireless else "switch"
         model = board.get("model") or info.get("board-name") or None
         ips = sorted(
             {ip.split("/")[0] for i in ifaces for ip in (i.ips or []) if "." in ip},
@@ -942,6 +946,22 @@ def wan_of(gws: list[Gateway], raw: dict[str, Any]) -> set[str]:
         if p.get("name") in wan and p.get("interface"):
             wan.add(p["interface"])
     return wan
+
+
+def routes_lans(raw: dict[str, Any], gws: list[Gateway]) -> bool:
+    """A router: a default route and a LAN-side network besides the interfaces
+    the routes leave through (networks.nets: a private, static address). A
+    switch or AP whose default route goes out through its management address
+    (the bridge or a management VLAN) does not route."""
+    if not gws:
+        return False
+    st = nets.State(
+        interfaces={r["name"]: r for r in raw["interfaces"] if r.get("name")},
+        vlan_ifaces=raw["vlans"],
+        addresses=raw["addresses"],
+        wan=wan_of(gws, raw),
+    )
+    return bool(nets.nets(st))
 
 
 def router_networks(
