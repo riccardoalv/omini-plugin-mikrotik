@@ -78,10 +78,13 @@ def test_sfp_diagnostics(routeros, cfg):
 def test_monitors_are_the_only_posts(routeros, cfg):
     collect(cfg)
     posts = [c for c in routeros.calls if c[0] == "POST"]
-    # Both read-only, with `once` (the fake asserts it): ports, then the bridge's STP.
+    # All read-only, with `once` (the fake asserts it): ports, the bridge's
+    # STP, then each running Wi-Fi radio.
     assert posts == [
         ("POST", "/rest/interface/ethernet/monitor"),
         ("POST", "/rest/interface/bridge/monitor"),
+        ("POST", "/rest/interface/wifi/monitor"),
+        ("POST", "/rest/interface/wifi/monitor"),
     ]
 
 

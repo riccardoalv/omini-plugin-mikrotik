@@ -60,7 +60,8 @@ class Client:
 
     def post(self, path: str, body: dict[str, Any]) -> Any:
         """Runs a console command. A collection only sends read-only ones
-        (``/interface/ethernet/monitor`` and ``/interface/bridge/monitor`` with
+        (``/interface/ethernet/monitor``, ``/interface/bridge/monitor`` and
+        ``/interface/wifi/monitor`` or ``/interface/wireless/monitor``, with
         ``once``), a backup ``/execute`` of ``/export terse``; a change Omini
         asked for may send ``add`` (with ``place-before``), ``/ip/dns/set`` or
         ``/tool/wol``."""

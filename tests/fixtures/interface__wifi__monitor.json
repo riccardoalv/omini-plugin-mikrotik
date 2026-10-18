@@ -1,0 +1,4 @@
+[
+{"name":"wifi1","state":"running-ap","channel":"5180/ax/Ceee","registered-peers":"1","authorized-peers":"1","tx-power":"23"},
+{"name":"wifi2","state":"running-ap","channel":"2437/ax","registered-peers":"0","authorized-peers":"0","tx-power":"17"}
+]

@@ -1,1 +1,4 @@
-[{".id":"*C","name":"wifi1","default-name":"wifi1","configuration.mode":"ap","configuration.ssid":"Home","channel.band":"5ghz-ax","mac-address":"48:A9:8A:11:22:10","disabled":"false","running":"true"}]
+[
+{".id":"*C","name":"wifi1","default-name":"wifi1","configuration.mode":"ap","configuration.ssid":"Home","channel.band":"5ghz-ax","channel.width":"20/40/80mhz","mac-address":"48:A9:8A:11:22:10","disabled":"false","running":"true","inactive":"false","bound":"true"},
+{".id":"*E","name":"wifi2","default-name":"wifi2","configuration.mode":"ap","configuration.ssid":"Home","channel.band":"2ghz-ax","channel.frequency":"2437","channel.width":"20mhz","mac-address":"48:A9:8A:11:22:11","disabled":"false","running":"true","inactive":"false","bound":"true"}
+]

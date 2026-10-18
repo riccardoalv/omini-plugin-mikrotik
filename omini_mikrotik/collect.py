@@ -38,7 +38,7 @@ from omini_sdk import (
 )
 
 from omini_mikrotik import backup as backup_mod
-from omini_mikrotik import forwards, services
+from omini_mikrotik import forwards, services, wireless
 from omini_mikrotik import networks as nets
 from omini_mikrotik import vlans as vlans_mod
 from omini_mikrotik.client import Client, Failed, Forbidden, NotFound
@@ -1053,6 +1053,7 @@ def collect(cfg: Config) -> list[Device]:
             )
             or None,
             wireless_clients=clients or None,
+            **wireless.radios_field(c, missing),
             gateways=gws or None,
             vlans=vlans or None,
             **router,
@@ -1238,7 +1239,8 @@ def apply(cfg: Config, change: Change) -> list[Device]:
     interfaces, addresses, DHCP and firewall (see networks.py). dns.set,
     dns.delete, wol.send, pause.set, pause.delete: /ip/dns/static,
     /tool/wol, the omini_paused address list and the pause rules of both
-    families (see services.py)."""
+    families (see services.py). wifi.channel: a radio's fixed frequency
+    (see wireless.py)."""
     c = client_from(cfg)
     j = Journal(c)
     try:
@@ -1259,6 +1261,8 @@ def apply(cfg: Config, change: Change) -> list[Device]:
             change_network(c, j, change, urlparse(c.base).hostname or "")
         elif change.kind in SERVICE_CHANGES:
             change_service(c, j, change)
+        elif change.kind == "wifi.channel":
+            wireless.set_channel(c, j, change.value)
         else:
             raise PluginError(f"this plugin cannot apply {change.kind}")
     except Exception:

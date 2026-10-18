@@ -6,5 +6,6 @@
 {".id":"*A","name":"bridge","type":"bridge","mac-address":"48:A9:8A:11:22:02","running":"true","disabled":"false","rx-byte":"6000","tx-byte":"8000","rx-error":"0","tx-error":"0"},
 {".id":"*B","name":"vlan20","type":"vlan","mac-address":"48:A9:8A:11:22:02","running":"true","disabled":"false","comment":"IoT","rx-byte":"300","tx-byte":"400","rx-error":"0","tx-error":"0"},
 {".id":"*C","name":"wifi1","default-name":"wifi1","type":"wifi","mac-address":"48:A9:8A:11:22:10","running":"true","disabled":"false","rx-byte":"900","tx-byte":"800","rx-error":"0","tx-error":"0"},
+{".id":"*E","name":"wifi2","default-name":"wifi2","type":"wifi","mac-address":"48:A9:8A:11:22:11","running":"true","disabled":"false","rx-byte":"100","tx-byte":"200","rx-error":"0","tx-error":"0"},
 {".id":"*D","name":"lo","type":"loopback","mac-address":"00:00:00:00:00:00","running":"true","disabled":"false","rx-byte":"0","tx-byte":"0","rx-error":"0","tx-error":"0"}
 ]

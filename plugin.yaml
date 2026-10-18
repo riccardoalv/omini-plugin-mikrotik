@@ -8,11 +8,11 @@ description: >-
   MikroTik routers, switches and access points through the RouterOS v7 REST
   API: ports with link speed, traffic, SFP diagnostics and VLANs, bridge MAC
   table, ARP, IPv6 neighbors and addresses, DHCP and DHCPv6 leases, MNDP/LLDP/CDP neighbors, Wi-Fi
-  clients, IPv4 and IPv6 default gateways, A and AAAA names, port forwards (with the ones UPnP opened), CPU, memory, temperatures and pending updates. It changes, when
+  clients, IPv4 and IPv6 default gateways, A and AAAA names, Wi-Fi radios and their channels, port forwards (with the ones UPnP opened), CPU, memory, temperatures and pending updates. It changes, when
   asked: Ethernet ports on or off, a bridge port's VLANs and the bridge's
   VLANs (VLAN filtering must be on), and a router's VLAN networks (interface,
   gateway, DHCP, access rules, mDNS), DHCP reservations, local DNS names
-  and paused devices (no internet); it sends Wake-on-LAN packets. Each change
+  and paused devices (no internet) and a Wi-Fi radio's channel; it sends Wake-on-LAN packets. Each change
   is read back and undone if RouterOS did not take it. It also reads STP
   port roles, bonds and the configuration (/export, without sensitive values)
   for Omini's history.
@@ -32,6 +32,7 @@ changes:
   - wol.send
   - pause.set
   - pause.delete
+  - wifi.channel
 backup: true
 fields:
   - key: url

@@ -29,6 +29,8 @@ WRITABLE = {
     "/rest/ipv6/firewall/filter",
     "/rest/ipv6/firewall/address-list",
     "/rest/ipv6/firewall/connection",
+    "/rest/interface/wifi",
+    "/rest/interface/wireless",
 }
 
 FORBIDDEN = {"error": 403, "message": "Forbidden", "detail": "not enough permissions (9)"}
@@ -62,6 +64,7 @@ class FakeRouterOS:
         for f in FIXTURES.glob("*.json"):
             self.routes["/rest/" + f.stem.replace("__", "/")] = json.loads(f.read_text())
         self.auth = ("omini", "secret")
+        self.radio_stuck = False  # a radio whose monitor keeps its old channel
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -79,6 +82,12 @@ class FakeRouterOS:
             assert "once" in body  # read-only: never a monitor that keeps running
             rows = [r for r in self.routes[path] if r["name"] == body["numbers"]]
             return httpx.Response(200, json=rows)
+        if method == "POST" and path in (
+            "/rest/interface/wifi/monitor",
+            "/rest/interface/wireless/monitor",
+        ):
+            assert "once" in body  # read-only: never a monitor that keeps running
+            return httpx.Response(200, json=self.radio_monitor(path, body["numbers"]))
         if method == "POST" and path == "/rest/execute":
             # Only the export: a read, with the user's policies (sensitive values left out).
             assert body["script"] == "/export terse", body
@@ -207,6 +216,20 @@ class FakeRouterOS:
         assert before is None or at is not None, f"no {before} to place before"
         rows.insert(len(rows) if at is None else at, row)
         return item
+
+    def radio_monitor(self, path: str, name: str) -> list[dict]:
+        """The fixture's monitor row, on the radio's fixed frequency once it has one."""
+        if path not in self.routes:
+            return []
+        rows = [dict(r) for r in self.routes[path] if r["name"] == name]
+        menu = path.removesuffix("/monitor")
+        key = "frequency" if menu.endswith("wireless") else "channel.frequency"
+        config = next((r for r in self.routes.get(menu, []) if r.get("name") == name), {})
+        fixed = config.get(key, "")
+        for r in rows:
+            if fixed.isdigit() and not self.radio_stuck:
+                r["channel"] = fixed + r.get("channel", "")[4:]
+        return rows
 
     @staticmethod
     def derive(menu: str, row: dict) -> None:
