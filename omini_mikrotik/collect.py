@@ -1049,7 +1049,11 @@ def change_network(c: Client, j: Journal, change: Change, mgmt: str) -> None:
     elif change.kind == "reservation.set":
         nets.reserve(j, st, value)
         m, ip = nets.norm_mac(value.get("mac")), str(value.get("ip"))
-        if not any(r["mac"] == m and r["ip"] == ip for r in nets.reservations(router_state(c))):
+        name = nets.text(value.get("name")) or None
+        if not any(
+            r["mac"] == m and r["ip"] == ip and r["name"] == name
+            for r in nets.reservations(router_state(c))
+        ):
             raise PluginError(f"RouterOS did not apply the reservation of {m}")
     else:
         m = nets.norm_mac(value.get("mac"))

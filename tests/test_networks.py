@@ -324,3 +324,15 @@ def test_reservations(routeros, cfg):
     assert "aa:bb:cc:00:00:03" not in [r.mac for r in rt.dhcp_reservations]
     with pytest.raises(PluginError, match=r"no DHCP server serves 192\.168\.20\.5"):
         apply(cfg, change("reservation.set", {"mac": "aa:bb:cc:00:00:09", "ip": "192.168.20.5"}))
+
+
+def test_a_reservation_whose_name_did_not_stick_fails(routeros, cfg):
+    routeros.ignore_fields = {"comment"}
+    value = {"mac": "aa:bb:cc:00:00:03", "ip": "192.168.88.5", "name": "Tablet"}
+    with pytest.raises(PluginError, match="did not apply the reservation of aa:bb:cc:00:00:03"):
+        apply(cfg, change("reservation.set", value))
+    routeros.ignore_fields = set()
+    [rt] = apply(cfg, change("reservation.set", value))
+    assert ("aa:bb:cc:00:00:03", "192.168.88.5", "Tablet") in [
+        (r.mac, r.ip, r.name) for r in rt.dhcp_reservations
+    ]

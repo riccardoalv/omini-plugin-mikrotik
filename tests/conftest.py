@@ -50,6 +50,7 @@ class FakeRouterOS:
         self.writes = []  # (method, path, body) of every write taken
         self.read_only = False  # the user's group has no write policy
         self.ignore_changes = False  # answers 200 to a write but changes nothing
+        self.ignore_fields = set()  # properties a write answers 200 to but does not keep
         self.fail = {}  # "METHOD /rest/path" → the detail of a 400 answer
         self.fail_get = set()  # paths whose GET answers 500
         self.slow_get = set()  # paths whose GET times out
@@ -160,7 +161,7 @@ class FakeRouterOS:
             return httpx.Response(204)
         assert method == "PATCH", f"{method} {path}"
         if not self.ignore_changes:
-            row.update(body)
+            row.update({k: v for k, v in body.items() if k not in self.ignore_fields})
             self.derive(menu, row)
             if menu == "/rest/interface/ethernet":
                 for r in self.routes["/rest/interface"]:
@@ -174,7 +175,7 @@ class FakeRouterOS:
         item = f"*{next(self.ids):X}"
         if self.ignore_changes:
             return item
-        body = dict(body)
+        body = {k: v for k, v in body.items() if k not in self.ignore_fields}
         before = body.pop("place-before", None)
         row = {".id": item, "disabled": "false", **body}
         if menu in (
