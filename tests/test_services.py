@@ -399,6 +399,15 @@ def test_backup_falls_back_to_as_string_true(routeros, cfg):
     assert [e["as-string"] for e in routeros.executes] == ["", "true"]
 
 
+def test_backup_key_is_the_collection_key(routeros, cfg):
+    for unreadable in ("forbidden", "fail_get"):
+        getattr(routeros, unreadable).add("/rest/interface")
+        [b] = backup(cfg)
+        [rt] = collect(cfg)
+        assert b.device == rt.key == "192.168.88.1"
+        getattr(routeros, unreadable).clear()
+
+
 def test_backup_errors(routeros, cfg):
     routeros.forbidden.add("/rest/execute")
     with pytest.raises(PluginError, match="cannot export the configuration"):

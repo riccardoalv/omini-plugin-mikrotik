@@ -1136,7 +1136,8 @@ def backup(cfg: Config) -> list[ConfigBackup]:
     c = client_from(cfg)
     try:
         resource(c)
-        rows = as_list(c.get("/interface"))
+        # The same key as collect: an unreadable /interface falls back to the host.
+        rows = optional("interfaces", [], lambda: as_list(c.get("/interface")), [])
         key = device_key(rows, urlparse(c.base).hostname or c.base)
         return [ConfigBackup(device=key, format="text", content=backup_mod.export(c))]
     finally:
