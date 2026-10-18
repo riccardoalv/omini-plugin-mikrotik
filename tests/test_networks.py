@@ -336,3 +336,19 @@ def test_a_reservation_whose_name_did_not_stick_fails(routeros, cfg):
     assert ("aa:bb:cc:00:00:03", "192.168.88.5", "Tablet") in [
         (r.mac, r.ip, r.name) for r in rt.dhcp_reservations
     ]
+
+
+def test_a_change_without_its_vlan_is_refused(routeros, cfg):
+    for kind, value in (
+        ("network.set", {"gateway": "192.168.40.1/24"}),
+        ("network.set", net("forty")),
+        ("network.delete", {}),
+        ("network.delete", {"vlan": None}),
+    ):
+        with pytest.raises(PluginError, match="no VLAN id"):
+            apply(cfg, change(kind, value))
+    with pytest.raises(PluginError, match="VLAN ids go from 1 to 4094"):
+        apply(cfg, change("network.set", net(5000)))
+    with pytest.raises(PluginError, match="dhcp must be"):
+        apply(cfg, change("network.set", net(40, dhcp=True)))
+    assert routeros.writes == []

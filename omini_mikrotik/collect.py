@@ -1042,7 +1042,7 @@ def change_network(c: Client, j: Journal, change: Change, mgmt: str) -> None:
         if not nets.matches(router_state(c), value):
             raise PluginError(f"RouterOS did not apply the network of VLAN {value['vlan']}")
     elif change.kind == "network.delete":
-        vid = int(value["vlan"])
+        vid = vlans_mod.vlan_id(value, "vlan")
         nets.apply_delete(j, st, vid, mgmt)
         if any(n.vlan == vid for n in nets.nets(router_state(c))):
             raise PluginError(f"RouterOS did not remove the network of VLAN {vid}")

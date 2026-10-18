@@ -209,7 +209,7 @@ def vlan_id(value: Any, key: str = "id") -> int:
     try:
         vid = int(value[key])
     except (TypeError, ValueError, KeyError) as e:
-        raise PluginError(f"no VLAN {key} in {value!r}") from e
+        raise PluginError(f"no VLAN id ({key!r}, 1 to 4094) in {value!r}") from e
     if not 1 <= vid <= 4094:
         raise PluginError("VLAN ids go from 1 to 4094")
     return vid

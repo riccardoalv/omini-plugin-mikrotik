@@ -29,7 +29,7 @@ from omini_sdk import PluginError
 from omini_mikrotik.client import Client, Forbidden, NotFound
 from omini_mikrotik.common import as_list, as_object, flag, mac, names, vlan_ids
 from omini_mikrotik.journal import Journal
-from omini_mikrotik.vlans import BRIDGE_VLANS, shared
+from omini_mikrotik.vlans import BRIDGE_VLANS, shared, vlan_id
 
 INTERFACES = "/interface"
 VLAN_INTERFACES = "/interface/vlan"
@@ -380,6 +380,8 @@ def parse_gateway(value: Any) -> ipaddress.IPv4Interface:
 
 
 def check_dhcp(gw: ipaddress.IPv4Interface, dhcp: Any) -> dict[str, Any] | None:
+    if dhcp is not None and not isinstance(dhcp, dict):
+        raise PluginError(f"dhcp must be {{enabled, from, to}}, not {dhcp!r}")
     if not dhcp or not dhcp.get("enabled"):
         return None
     try:
@@ -637,9 +639,7 @@ def guard_management(gateway: str, mgmt: str, what: str) -> None:
 
 
 def apply_set(j: Journal, st: State, want: dict[str, Any], mgmt: str) -> None:
-    vid = int(want["vlan"])
-    if not 1 <= vid <= 4094:
-        raise PluginError("VLAN ids go from 1 to 4094")
+    vid = vlan_id(want, "vlan")
     name = text(want.get("name"))
     gw = parse_gateway(want.get("gateway"))
     check_dhcp(gw, want.get("dhcp"))  # refused before anything is written
