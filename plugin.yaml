@@ -8,7 +8,7 @@ description: >-
   MikroTik routers, switches and access points through the RouterOS v7 REST
   API: ports with link speed, traffic, SFP diagnostics and VLANs, bridge MAC
   table, ARP, IPv6 neighbors, DHCP leases, MNDP/LLDP/CDP neighbors, Wi-Fi
-  clients, default gateways, CPU, memory, temperatures and pending updates. It changes, when
+  clients, default gateways, port forwards (with the ones UPnP opened), CPU, memory, temperatures and pending updates. It changes, when
   asked: Ethernet ports on or off, a bridge port's VLANs and the bridge's
   VLANs (VLAN filtering must be on), and a router's VLAN networks (interface,
   gateway, DHCP, access rules, mDNS), DHCP reservations, local DNS names

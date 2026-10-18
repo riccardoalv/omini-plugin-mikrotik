@@ -38,8 +38,8 @@ from omini_sdk import (
 )
 
 from omini_mikrotik import backup as backup_mod
+from omini_mikrotik import forwards, services
 from omini_mikrotik import networks as nets
-from omini_mikrotik import services
 from omini_mikrotik import vlans as vlans_mod
 from omini_mikrotik.client import Client, Failed, Forbidden, NotFound
 from omini_mikrotik.common import (
@@ -542,6 +542,14 @@ def ndp_field(c: Client, missing: list[str]) -> dict[str, Any]:
     return {"ndp": optional("IPv6 neighbors", missing, lambda: ndp(c), []) or None}
 
 
+def forwards_field(c: Client, missing: list[str]) -> dict[str, Any]:
+    """{"port_forwards": ...} for an Omini that knows the field."""
+    if "port_forwards" not in Device.model_fields:
+        return {}
+    rows = optional("port forwards", missing, lambda: forwards.port_forwards(c), [])
+    return {"port_forwards": rows or None}
+
+
 def leases(rows: list[dict[str, Any]], now: datetime) -> list[DhcpLease]:
     out = []
     for r in rows:
@@ -941,6 +949,7 @@ def collect(cfg: Config) -> list[Device]:
             **router,
             dns_records=optional("DNS names", missing, lambda: services.dns_records(c), []) or None,
             stp_root=root,
+            **forwards_field(c, missing),
             temperatures=optional("health", missing, lambda: temperatures(c), []) or None,
             storage=storage(info) or None,
             firmware=optional("updates", missing, lambda: firmware(c, info, board), None),
