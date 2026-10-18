@@ -1,0 +1,7 @@
+[
+{".id":"*1","address":"2001:db8:bd7c:8800::20/128","duid":"0x00030001aabbcc000020","iaid":"1","server":"dhcpv6-lan","life-time":"3d","status":"bound","expires-after":"2d23h","last-seen":"1h","dynamic":"true","disabled":"false"},
+{".id":"*2","address":"2001:db8:bd7c:8801::/64","duid":"0x000100012c3a1b2caabbcc000021","iaid":"7","server":"dhcpv6-lan","prefix-pool":"isp-pd","status":"bound","expires-after":"1d","dynamic":"true","disabled":"false"},
+{".id":"*3","address":"2001:db8:bd7c:8800::22/128","duid":"0x000100012c3a1b2caabbcc000022","iaid":"3","server":"dhcpv6-lan","status":"bound","dynamic":"true","disabled":"false"},
+{".id":"*4","address":"2001:db8:bd7c:8800::23/128","duid":"0x0004a1b2c3d4e5f60718293a4b5c6d7e8f90","iaid":"3","server":"dhcpv6-lan","status":"bound","dynamic":"true","disabled":"false"},
+{".id":"*5","address":"2001:db8:bd7c:8800::24/128","duid":"0x00030001aabbcc000024","server":"dhcpv6-lan","status":"waiting","dynamic":"false","disabled":"false"}
+]

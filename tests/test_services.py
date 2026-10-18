@@ -25,9 +25,10 @@ def ifaces(device):
 
 def test_reads_the_local_names_and_domain(routeros, cfg):
     [rt] = collect(cfg)
-    # A records only: no regexp, CNAME, AAAA or disabled entry; names lowercase.
+    # A and AAAA records only: no regexp, CNAME or disabled entry; names lowercase.
     assert [(r.name, r.ip) for r in rt.dns_records] == [
         ("nas.lan", "192.168.88.20"),
+        ("printer.lan", "fd00::30"),
         ("router.lan", "192.168.88.1"),
     ]
     assert rt.dns_domain == "lan"  # the LAN's DHCP network hands it out

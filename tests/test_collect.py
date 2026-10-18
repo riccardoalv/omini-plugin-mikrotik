@@ -22,7 +22,7 @@ def test_reads_the_router(routeros, cfg):
     assert rt.uptime_s == ((7 + 2) * 24 + 3) * 3600 + 4 * 60 + 5
     assert rt.cpu_pct == 7 and rt.mem_pct == 25.0 and rt.cpu_count == 4
     assert (rt.mem_total_bytes, rt.mem_used_bytes) == (1073741824, 268435456)
-    assert rt.ips == ["192.168.20.1", "192.168.88.1", "203.0.113.10"]
+    assert rt.ips[:3] == ["192.168.20.1", "192.168.88.1", "203.0.113.10"]  # then IPv6
 
 
 def test_ports(routeros, cfg):
@@ -37,7 +37,7 @@ def test_ports(routeros, cfg):
         "full",
     )
     assert wan.wan is True and wan.description == "ISP" and wan.rx_bytes == 98765432100
-    assert wan.ips == ["203.0.113.10/24"]
+    assert wan.ips == ["203.0.113.10/24", "2001:db8:ffff:10::2/64"]
     assert lan.speed_mbps == 1000 and lan.rx_errors == 2 and lan.wan is None
     # Renamed port: the connector comes from its factory name (ether3).
     assert (office.connector, office.up, office.speed_mbps) == ("rj45", False, None)
@@ -50,7 +50,7 @@ def test_ports(routeros, cfg):
         "vlan",
         20,
         "bridge",
-        ["192.168.20.1/24"],
+        ["192.168.20.1/24", "2001:db8:bd7c:8814::1/64"],
     )
     assert ports["wifi1"].type == "wireless" and ports["lo"].type == "loopback"
     assert ports["lo"].mac is None  # 00:00:00:00:00:00
@@ -105,7 +105,7 @@ def test_clients(routeros, cfg):
         ("192.168.88.10", "aa:bb:cc:00:00:01", "bridge"),
         ("203.0.113.1", "00:11:22:33:44:55", "ether1"),
     ]
-    assert [(lease.ip, lease.mac, lease.hostname) for lease in rt.dhcp_leases] == [
+    assert [(lease.ip, lease.mac, lease.hostname) for lease in rt.dhcp_leases[:2]] == [
         ("192.168.88.5", "aa:bb:cc:00:00:03", None),
         ("192.168.88.10", "aa:bb:cc:00:00:01", "laptop"),
     ]  # the "waiting" lease is left out
@@ -185,6 +185,7 @@ def test_gateways(routeros, cfg):
     assert [(g.name, g.interface, g.address, g.status) for g in rt.gateways] == [
         ("ether1", "ether1", "203.0.113.1", "up"),
         ("Backup LTE", None, "198.51.100.1", "down"),
+        ("ether1 IPv6", "ether1", "fe80::1", "up"),
     ]  # the default route of another routing table is not an internet uplink
 
 
@@ -216,7 +217,8 @@ def test_pppoe_wan_follows_its_port(routeros, cfg):
     ppp = {i.name: i for i in rt.interfaces}["pppoe-out1"]
     assert (ppp.type, ppp.wan, ppp.parent, ppp.speed_mbps) == ("tunnel", True, "ether1", 2500)
     assert [(g.name, g.interface, g.address) for g in rt.gateways] == [
-        ("pppoe-out1", "pppoe-out1", None)
+        ("pppoe-out1", "pppoe-out1", None),
+        ("ether1 IPv6", "ether1", "fe80::1"),
     ]
 
 
@@ -258,7 +260,12 @@ def test_routeros6_health_object(routeros, cfg):
 
 
 def test_optional_menus_do_not_fail_the_collection(routeros, cfg):
-    routeros.forbidden = {"/rest/ip/neighbor", "/rest/system/health", "/rest/ip/dhcp-server"}
+    routeros.forbidden = {
+        "/rest/ip/neighbor",
+        "/rest/system/health",
+        "/rest/ip/dhcp-server",
+        "/rest/ipv6/dhcp-server",
+    }
     del routeros.routes["/rest/interface/bridge/vlan"]
     routeros.routes.pop("/rest/interface/ethernet/monitor")
     routeros.routes["/rest/interface/ethernet/monitor"] = []
@@ -317,7 +324,11 @@ def test_a_failing_monitor_does_not_fail_the_collection(routeros, cfg, monkeypat
 
 def test_a_failing_optional_menu_is_skipped(routeros, cfg):
     routeros.fail_get = {"/rest/ip/neighbor", "/rest/interface/bridge/host"}  # 500
-    routeros.slow_get = {"/rest/system/health", "/rest/ip/dhcp-server/lease"}
+    routeros.slow_get = {
+        "/rest/system/health",
+        "/rest/ip/dhcp-server/lease",
+        "/rest/ipv6/dhcp-server/binding",
+    }
     [rt] = collect(cfg)
     assert rt.neighbors is None and rt.fdb is None and rt.temperatures is None
     assert rt.dhcp_leases is None and rt.arp and rt.interfaces

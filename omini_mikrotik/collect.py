@@ -455,6 +455,30 @@ def default_routes(c: Client) -> list[dict[str, Any]]:
     ]
 
 
+def default_routes6(c: Client) -> list[dict[str, Any]]:
+    """IPv6 default routes (::/0) of the main table."""
+    return [
+        r
+        for r in as_list(c.get("/ipv6/route"))
+        if r.get("dst-address") == "::/0"
+        and r.get("routing-table", "main") == "main"
+        and not flag(r.get("disabled"))
+    ]
+
+
+def gateways6(
+    routes: list[dict[str, Any]], addresses: list[dict[str, Any]], known: set[str]
+) -> list[Gateway]:
+    """IPv6 default gateways, named "<interface> IPv6" (or their comment) so
+    they never take the name of the IPv4 gateway on the same WAN."""
+    out = []
+    for g in gateways(routes, addresses, known):
+        label = g.interface or g.address or "default"
+        named = g.name if g.name not in (g.interface, g.address) else f"{label} IPv6"
+        out.append(g.model_copy(update={"name": named}))
+    return out
+
+
 def route_interface(
     r: dict[str, Any], addresses: list[dict[str, Any]], known: set[str]
 ) -> str | None:
@@ -569,6 +593,72 @@ def leases(rows: list[dict[str, Any]], now: datetime) -> list[DhcpLease]:
             )
         )
     return sorted(out, key=lambda lease: tuple(int(p) for p in lease.ip.split(".")))
+
+
+def duid_mac(value: Any) -> str | None:
+    """The MAC inside a DUID-LLT (type 1) or DUID-LL (type 3) of Ethernet
+    (hardware type 1), as hex with or without '0x', colons or dashes."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip().lower().removeprefix("0x").replace(":", "").replace("-", "")
+    if not re.fullmatch(r"[0-9a-f]+", v):
+        return None
+    if v.startswith("00010001") and len(v) == 28:
+        raw = v[16:]
+    elif v.startswith("00030001") and len(v) == 20:
+        raw = v[8:]
+    else:
+        return None
+    return mac(":".join(raw[i : i + 2] for i in range(0, 12, 2)))
+
+
+def leases6(rows: list[dict[str, Any]], now: datetime) -> list[DhcpLease]:
+    """Bound DHCPv6 bindings of one address (/128): a delegated prefix is no
+    device's address. The MAC is the binding's own when RouterOS says it,
+    else the one inside the client's DUID; a binding without either is left out."""
+    out = []
+    for r in rows:
+        status = str(r.get("status") or "")
+        if (status and status != "bound") or flag(r.get("disabled")):
+            continue
+        addr = str(r.get("address") or "")
+        try:
+            net = ipaddress.ip_network(addr, strict=False)
+        except ValueError:
+            continue
+        if net.version != 6 or net.prefixlen != 128:
+            continue
+        m = mac(r.get("mac-address")) or duid_mac(r.get("duid"))
+        if not m:
+            continue
+        expires = duration_s(r.get("expires-after"))
+        out.append(
+            DhcpLease(
+                ip=str(net.network_address),
+                mac=m,
+                hostname=(r.get("host-name") or "").strip() or None,
+                expires_at=now + timedelta(seconds=expires) if expires else None,
+            )
+        )
+    return sorted(out, key=lambda lease: ipaddress.IPv6Address(lease.ip))
+
+
+def own_ips6(rows: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """The interfaces' IPv6 addresses (global and ULA, as "<addr>/<len>"):
+    link-local ones are on every port and name no network."""
+    out: dict[str, list[str]] = {}
+    for a in rows:
+        iface, addr = a.get("interface"), str(a.get("address") or "")
+        if not iface or not enabled(a) or flag(a.get("link-local")):
+            continue
+        try:
+            ip = ipaddress.ip_interface(addr)
+        except ValueError:
+            continue
+        if ip.version != 6 or ip.ip.is_link_local or ip.ip.is_multicast or ip.ip.is_loopback:
+            continue
+        out.setdefault(iface, []).append(str(ip))
+    return out
 
 
 def fdb(c: Client, bridges: set[str]) -> list[FdbEntry]:
@@ -898,13 +988,29 @@ def collect(cfg: Config) -> list[Device]:
                 if r.get("name") and r.get("type") == "ether" and not flag(r.get("disabled"))
             ]
             monitor = optional("ethernet monitor", missing, lambda: ethernet_monitor(c, ports), {})
+            gws += gateways6(
+                optional("IPv6 routes", missing, lambda: default_routes6(c), []) if routing else [],
+                raw["addresses"],
+                known,
+            )
+            wan |= {g.interface for g in gws if g.interface}
             ifaces = build_interfaces(raw, monitor, wan)
+            ips6 = own_ips6(
+                optional("IPv6 addresses", missing, lambda: as_list(c.get("/ipv6/address")), [])
+            )
+            ifaces = [
+                i.model_copy(update={"ips": (i.ips or []) + ips6[i.name]}) if i.name in ips6 else i
+                for i in ifaces
+            ]
             bridges = {i.name for i in ifaces if i.type == "bridge"}
             vlans = device_vlans(raw)
             root = optional("bridge monitor", missing, lambda: stp_root(c, raw["bridges"]), None)
         now = datetime.now(timezone.utc)
         lease_rows = optional(
             "DHCP leases", missing, lambda: as_list(c.get("/ip/dhcp-server/lease")), None
+        )
+        bindings = optional(
+            "DHCPv6 bindings", missing, lambda: as_list(c.get("/ipv6/dhcp-server/binding")), []
         )
         if raw and gws:
             router = optional(
@@ -918,8 +1024,8 @@ def collect(cfg: Config) -> list[Device]:
         role = "router" if routing else "ap" if has_wireless else "switch"
         model = board.get("model") or info.get("board-name") or None
         ips = sorted(
-            {ip.split("/")[0] for i in ifaces for ip in (i.ips or []) if "." in ip},
-            key=lambda ip: tuple(int(p) for p in ip.split(".")),
+            {ip.split("/")[0] for i in ifaces for ip in (i.ips or [])},
+            key=lambda ip: (ipaddress.ip_address(ip).version, ipaddress.ip_address(ip)),
         )
         device = Device(
             key=device_key(raw["interfaces"] if raw else [], host),
@@ -941,7 +1047,10 @@ def collect(cfg: Config) -> list[Device]:
             fdb=optional("bridge hosts", missing, lambda: fdb(c, bridges), []) or None,
             arp=optional("ARP", missing, lambda: arp(c), []) or None,
             **ndp_field(c, missing),
-            dhcp_leases=optional("DHCP leases", missing, lambda: leases(lease_rows or [], now), [])
+            dhcp_leases=(
+                optional("DHCP leases", missing, lambda: leases(lease_rows or [], now), [])
+                + optional("DHCPv6 bindings", missing, lambda: leases6(bindings, now), [])
+            )
             or None,
             wireless_clients=clients or None,
             gateways=gws or None,

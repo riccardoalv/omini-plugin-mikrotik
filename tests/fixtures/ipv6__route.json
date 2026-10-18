@@ -1,0 +1,5 @@
+[
+{".id":"*80000010","dst-address":"::/0","gateway":"fe80::1%ether1","immediate-gw":"fe80::1%ether1","distance":"1","scope":"30","target-scope":"10","routing-table":"main","active":"true","dynamic":"true","dhcp":"true","disabled":"false","inactive":"false"},
+{".id":"*80000011","dst-address":"2001:db8:bd7c:8800::/64","gateway":"bridge","immediate-gw":"bridge","distance":"0","routing-table":"main","active":"true","dynamic":"true","connect":"true","disabled":"false"},
+{".id":"*80000012","dst-address":"::/0","gateway":"2001:db8:ffff::1","routing-table":"vpn","active":"true","static":"true","disabled":"false"}
+]

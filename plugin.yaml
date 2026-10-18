@@ -7,8 +7,8 @@ timeout_s: 60
 description: >-
   MikroTik routers, switches and access points through the RouterOS v7 REST
   API: ports with link speed, traffic, SFP diagnostics and VLANs, bridge MAC
-  table, ARP, IPv6 neighbors, DHCP leases, MNDP/LLDP/CDP neighbors, Wi-Fi
-  clients, default gateways, port forwards (with the ones UPnP opened), CPU, memory, temperatures and pending updates. It changes, when
+  table, ARP, IPv6 neighbors and addresses, DHCP and DHCPv6 leases, MNDP/LLDP/CDP neighbors, Wi-Fi
+  clients, IPv4 and IPv6 default gateways, A and AAAA names, port forwards (with the ones UPnP opened), CPU, memory, temperatures and pending updates. It changes, when
   asked: Ethernet ports on or off, a bridge port's VLANs and the bridge's
   VLANs (VLAN filtering must be on), and a router's VLAN networks (interface,
   gateway, DHCP, access rules, mDNS), DHCP reservations, local DNS names

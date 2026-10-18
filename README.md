@@ -15,15 +15,16 @@
 | Ethernet link rate and duplex, **SFP diagnostics** (vendor, part, serial, wavelength, temperature, voltage, bias, TX/RX power) | Link speed, port front view (RJ45 / SFP / QSFP) |
 | Bridges and their ports, bonding members | Bridge members and speed; each bond member's LAG (`lag`), the bond itself is a `lag` port |
 | Bridge ports' spanning tree role and state, the root bridge (`POST /interface/bridge/monitor` with `once`) | STP on the map (blocked links drawn as standby), root bridge changes |
-| Local DNS names (`/ip/dns/static` A records), the DHCP `domain` | DNS names of fixed-address devices |
+| Local DNS names (`/ip/dns/static` A and AAAA records), the DHCP `domain` | DNS names of fixed-address devices |
 | Paused devices (the `omini_paused` address list) | The pause mark on the map |
 | Bridge VLAN table (PVID, tagged ports), VLAN interfaces with their subnets | Port VLAN membership, VLAN list |
 | Bridge host table (MAC → port, VLAN) | Which client sits behind which port |
-| ARP table, bound DHCP leases | Clients and their names |
+| ARP table, bound DHCP leases, bound DHCPv6 bindings of one address (`/ipv6/dhcp-server/binding`) | Clients and their names |
 | IPv6 neighbors (`/ipv6/neighbor`) | Which IPv6 address belongs to which MAC, so traffic over IPv6 reaches the right device |
 | Neighbors (MNDP, LLDP, CDP) | Links between devices |
 | Wi-Fi clients (`wifi` / wifiwave2 and legacy `wireless`): SSID, band, signal, link rates, current traffic (`wifi` only) | Wi-Fi clients on the map |
-| Default routes of the main table | WAN uplinks (`wan` interface) and gateway status |
+| Default routes of the main table, IPv4 (`0.0.0.0/0`) and IPv6 (`::/0`) | WAN uplinks (`wan` interface) and gateway status |
+| The interfaces' IPv6 addresses (`/ipv6/address`: global and ULA, not link-local) | The device's and its ports' addresses, next to IPv4 |
 | Port forwards: `dst-nat` rules of the `dstnat` chain (`/ip/firewall/nat`, and `/ipv6/firewall/nat` when RouterOS has it), with the dynamic ones UPnP opened | The router's **Exposed to the internet** section and its alerts (Omini never changes them) |
 
 Role: **router** when the device has a default route and a LAN-side network besides the interface the route leaves through (a private, static address on another bridge, VLAN or port); otherwise **ap** if it has Wi-Fi interfaces, else **switch**. A switch or access point whose default route goes out through its management address (the bridge or a management VLAN) is not a router: its route is no WAN and is not reported as a gateway.
@@ -91,8 +92,9 @@ A name is a **static DNS entry** (`/ip/dns/static`) of type A, which the router 
 
 - `dns.set` `{name, ip}`: a new name is `PUT /rest/ip/dns/static` with `name`, `address` and the comment `Omini`; a name already there gets its `address` changed (`PATCH`), and other A entries of the same name are removed, so a name has one address. The entries are read again to check the name answers that address.
 - `dns.delete` `{name}`: `DELETE` of every A entry with that name (a name that is not there is not an error).
+- Names Omini sets are A records only; **AAAA entries are read but never changed or removed** (devices rotate their IPv6 privacy addresses), even when a name Omini changes or removes has one.
 
-Omini shows every enabled A entry with a name (regexp, CNAME, AAAA, forward and disabled entries are left out) as the device's names, and the `domain` the DHCP server hands out (`/ip/dhcp-server/network`: the LAN's network, else the first one with a domain) as its local domain.
+Omini shows every enabled A and AAAA entry with a name (regexp, CNAME, forward and disabled entries are left out) as the device's names, and the `domain` the DHCP server hands out (`/ip/dhcp-server/network`: the LAN's network, else the first one with a domain) as its local domain.
 
 ### Wake-on-LAN (`wol.send`)
 
@@ -181,11 +183,14 @@ A collection only reads: every request is a `GET` to `https://<router>/rest/<men
 | `/ip/route` | default routes of the `main` table → WAN interface and gateway status (`active`) | [IP Routing](https://help.mikrotik.com/docs/display/ROS/IP+Routing) |
 | `/ip/arp` | ARP (failed / incomplete entries left out) | [ARP](https://help.mikrotik.com/docs/display/ROS/ARP) |
 | `/ipv6/neighbor` | IPv6 neighbors, like ARP (entries without a MAC, failed or incomplete left out); none when the IPv6 package is off or the read fails | [IPv6 Neighbor Discovery](https://help.mikrotik.com/docs/display/ROS/IPv6+Neighbor+Discovery) |
-| `/ip/dhcp-server/lease` | leases with `status=bound`; static leases (reservations) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
+| `/ip/dhcp-server/lease` | leases with `status=bound`; static leases (reservations) |
+| `/ipv6/dhcp-server/binding` | DHCPv6 bindings with `status=bound` of one address (`/128`; delegated prefixes are no device's address): the address, the MAC (the binding's `mac-address` if RouterOS gives it, else the one inside a DUID-LL or DUID-LLT; a binding without either is left out), `expires-after` | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
+| `/ipv6/route` | IPv6 default routes (`::/0`) of the `main` table → gateways named `<interface> IPv6` (or their comment), on routers only | [IP Routing](https://help.mikrotik.com/docs/display/ROS/IP+Routing) |
+| `/ipv6/address` | the interfaces' global and ULA addresses (link-local ones left out) | [IPv6 Addressing](https://help.mikrotik.com/docs/display/ROS/IP+Addressing) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
 | `/ip/dhcp-server`, `/ip/pool` | the DHCP server of each network and its range (routers) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
 | `/ip/firewall/filter` | the rules of each network (its access; routers) | [Filter](https://help.mikrotik.com/docs/display/ROS/Filter) |
 | `/ip/dns` | `mdns-repeat-ifaces`: the networks in the mDNS repeater (routers) | [DNS](https://help.mikrotik.com/docs/display/ROS/DNS) |
-| `/ip/dns/static` | local DNS names (A records) | [DNS](https://help.mikrotik.com/docs/display/ROS/DNS) |
+| `/ip/dns/static` | local DNS names (A and AAAA records) | [DNS](https://help.mikrotik.com/docs/display/ROS/DNS) |
 | `/ip/dhcp-server/network` | the DHCP networks (gateway, `domain`) (routers) | [DHCP](https://help.mikrotik.com/docs/display/ROS/DHCP) |
 | `/ip/firewall/address-list` | the `omini_paused` and `omini-private` lists (routers) | [Address-lists](https://help.mikrotik.com/docs/display/ROS/Address-lists) |
 | `/ipv6/firewall/filter`, `/ipv6/firewall/address-list`, `/ipv6/address`, `/ipv6/neighbor` | for a pause: its IPv6 rule, `omini-private6`, the LAN-side prefixes, the device's IPv6 addresses (routers) | [Firewall](https://help.mikrotik.com/docs/display/ROS/Firewall) |
@@ -224,13 +229,13 @@ Mapping notes:
   - the connection table in REST: `src-address` as `<ip>:<port>` (without a port for ICMP), `.proplist` in the query string, and `DELETE /rest/ip/firewall/connection/<.id>` removing one;
   - the bridge port's STP fields in REST (`role` as `root-port`, `designated-port`, `alternate-port`, `backup-port`, `disabled-port`; `forwarding` and `learning` flags; `status=inactive`), and `POST /rest/interface/bridge/monitor` with `once` answering `root-bridge-id` as `0x8000.48:A9:8A:11:22:02`. A port whose role is root or designated but whose `forwarding`/`learning` flags are missing has no STP state (only its role);
   - port forwards: the NAT rules' REST field names (`dst-port`, `to-addresses`, `to-ports`, `in-interface-list`) are the documented console ones, and UPnP mappings are taken to be the **dynamic** `dst-nat` rules RouterOS adds to `/ip/firewall/nat` (there is no separate list of UPnP mappings; NAT-PMP mappings, if RouterOS adds them the same way, read as UPnP too);
+  - IPv6: `/ipv6/dhcp-server/binding` in REST (`address` with its prefix length, `duid` as hex with `0x`, `status`, `expires-after`; whether it has a `mac-address` and a host name on some versions), whether a DHCPv6 server that hands out single addresses (not only prefixes) exists on the version in use, and `/ipv6/route` answering `gateway` as `fe80::1%ether1` like IPv4's `immediate-gw`;
   - SFP high temperature alarm thresholds: RouterOS's monitor does not report the module's alarm thresholds, so `temperature_high_c` is never set (Omini compares with 70 °C).
 - **Undo** is best effort: a firewall rule put back after a failed change goes back at the end of its chain, and properties RouterOS only reports are not restored. Connections removed by a pause are not put back (they are only removed after the pause is verified).
 - **STP:** the root bridge is read from the first bridge that runs STP, RSTP or MSTP (with MSTP, the CIST root); bridges with `protocol-mode=none` report no STP.
 - **Bridge VLAN entries holding several VLANs** are not split (see [What it changes](#what-it-changes)).
 - **CAPsMAN:** clients of APs managed by CAPsMAN (`/caps-man/registration-table`) are not read yet; add each AP as its own integration.
 - **Gateway latency / loss:** RouterOS has no per-gateway latency in its route table; gateways show only up/down (from the route's `active` flag).
-- **IPv6** routes and leases are not read (a pause reads the IPv6 firewall, addresses and neighbors).
 - **Pause by MAC** (`src-mac-address` in the forward chain of both families) follows MikroTik's documentation; it is not verified on hardware yet, nor is the IPv6 connection table's `src-address` format (`[addr]:port` and `addr` are both read).
 - **Traffic** is the average between two collections, computed by Omini from the counters.
 

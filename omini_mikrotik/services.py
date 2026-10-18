@@ -100,6 +100,7 @@ def read_static(c: Client) -> list[dict[str, Any]]:
 
 
 def records(rows: list[dict[str, Any]]) -> list[DnsRecord]:
+    """The enabled A records (what dns.set and dns.delete manage)."""
     out = []
     for r in rows:
         if not is_a(r) or not on(r):
@@ -112,9 +113,36 @@ def records(rows: list[dict[str, Any]]) -> list[DnsRecord]:
     return sorted(out, key=lambda d: (d.name, ipaddress.IPv4Address(d.ip)))
 
 
+def is_aaaa(r: dict[str, Any]) -> bool:
+    """An AAAA record by name: Omini reads it but never changes or removes it
+    (the names Omini sets stay A records)."""
+    return (
+        text(r.get("type")).upper() == "AAAA"
+        and bool(text(r.get("name")))
+        and not text(r.get("regexp"))
+    )
+
+
+def records6(rows: list[dict[str, Any]]) -> list[DnsRecord]:
+    out = []
+    for r in rows:
+        if not is_aaaa(r) or not on(r):
+            continue
+        try:
+            ip = ipaddress.IPv6Address(text(r.get("address")))
+        except ValueError:
+            continue
+        out.append(DnsRecord(name=fqdn(r.get("name")), ip=str(ip)))
+    return out
+
+
 def dns_records(c: Client) -> list[DnsRecord]:
-    """Every local name the router answers (enabled A records)."""
-    return records(as_list(c.get(DNS_STATIC)))
+    """Every local name the router answers: enabled A and AAAA records."""
+    rows = as_list(c.get(DNS_STATIC))
+    both = records(rows) + records6(rows)
+    return sorted(
+        both, key=lambda d: (d.name, ipaddress.ip_address(d.ip).version, ipaddress.ip_address(d.ip))
+    )
 
 
 def dns_domain(st: State) -> str | None:
