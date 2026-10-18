@@ -154,6 +154,14 @@ def test_creates_a_network(routeros, cfg):
     assert len(adds) == 5 and {w[2]["place-before"] for w in adds} == {"*4", "*8"}
 
 
+def test_a_new_dhcp_server_gets_its_own_pool(routeros, cfg):
+    routeros.rows("/ip/pool").append({".id": "*9", "name": "", "ranges": "10.0.0.2-10.0.0.9"})
+    apply(cfg, change("network.set", net(40)))
+    server = routeros.row("/ip/dhcp-server", interface="vlan40")
+    assert server["address-pool"] == "omini-vlan40"
+    assert routeros.row("/ip/pool", **{".id": "*9"})["ranges"] == "10.0.0.2-10.0.0.9"
+
+
 def test_a_new_vlan_on_a_bridge_port_tags_that_port(routeros, cfg):
     [rt] = apply(cfg, change("network.set", net(40, parent="sfp-sfpplus1", access="all")))
     assert networks(rt)[40]["parent"] == "bridge"  # a VLAN interface rides on the bridge

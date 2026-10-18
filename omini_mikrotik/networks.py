@@ -489,8 +489,10 @@ def set_dhcp(
             j.set(SERVERS, server, {"disabled": "true"}, f"turning DHCP off on {iface}")
         return
     ranges = f"{rng['from']}-{rng['to']}"
-    pool = pool_named(st, text((server or {}).get("address-pool")))
+    # A new server gets a new pool (never one that only matches its empty name).
+    pool = pool_named(st, text(server.get("address-pool"))) if server is not None else None
     if pool is not None:
+        pool_name = text(pool.get("name"))
         j.set(POOLS, pool, {"ranges": ranges}, f"the DHCP range of {iface}")
     else:
         pool_name = unique({text(p.get("name")) for p in st.pools}, f"omini-{iface}")
