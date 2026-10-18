@@ -20,7 +20,8 @@ def test_reads_the_router(routeros, cfg):
     assert rt.model == "RB5009UG+S+" and rt.serial == "HD9081234AB"
     assert rt.os_version == "RouterOS 7.15.3"
     assert rt.uptime_s == ((7 + 2) * 24 + 3) * 3600 + 4 * 60 + 5
-    assert rt.cpu_pct == 7 and rt.mem_pct == 25.0
+    assert rt.cpu_pct == 7 and rt.mem_pct == 25.0 and rt.cpu_count == 4
+    assert (rt.mem_total_bytes, rt.mem_used_bytes) == (1073741824, 268435456)
     assert rt.ips == ["192.168.20.1", "192.168.88.1", "203.0.113.10"]
 
 

@@ -8,7 +8,7 @@
 
 | Data | Used for |
 |---|---|
-| Identity, model, serial, RouterOS version, CPU load, memory, uptime, flash use | Device details and health |
+| Identity, model, serial, RouterOS version, CPU load and count, memory (use and size), uptime, flash use | Device details and health |
 | Temperatures (`/system/health`) | Health (hottest CPU temperature) |
 | Pending updates: RouterOS (from the device's **own last check**) and RouterBOOT firmware | Health (*update pending*) |
 | Interfaces: name, comment, type, MAC, running, traffic and error counters | Ports on the map, traffic |

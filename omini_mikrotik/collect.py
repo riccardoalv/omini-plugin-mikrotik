@@ -741,6 +741,17 @@ def memory_pct(info: dict[str, Any]) -> float | None:
     return round((total - free) / total * 100, 1)
 
 
+def sizes(info: dict[str, Any]) -> dict[str, Any]:
+    """CPU count and memory in bytes, for an Omini that knows the fields."""
+    total, free = counter(info.get("total-memory")), counter(info.get("free-memory"))
+    values = {
+        "cpu_count": counter(info.get("cpu-count")) or None,
+        "mem_total_bytes": total or None,
+        "mem_used_bytes": max(total - free, 0) if total and free is not None else None,
+    }
+    return {k: v for k, v in values.items() if k in Device.model_fields and v is not None}
+
+
 def cpu_pct(info: dict[str, Any]) -> float | None:
     n = number(info.get("cpu-load"))
     return n if n is not None and 0 <= n <= 100 else None
@@ -914,6 +925,7 @@ def collect(cfg: Config) -> list[Device]:
             uptime_s=duration_s(info.get("uptime")),
             cpu_pct=cpu_pct(info),
             mem_pct=memory_pct(info),
+            **sizes(info),
             macs=sorted({i.mac for i in ifaces if i.mac}) or None,
             ips=ips or None,
             interfaces=ifaces or None,
