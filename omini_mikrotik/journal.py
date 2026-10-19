@@ -13,7 +13,7 @@ from typing import Any
 
 from omini_sdk import PluginError, log
 
-from omini_mikrotik.client import Client, Forbidden, NotFound
+from omini_mikrotik.client import Client, Forbidden, NotFound, detail_of
 
 WRITE_POLICY = (
     "the RouterOS user's group lacks the write policy: add it "
@@ -66,7 +66,7 @@ class Journal:
         except Forbidden as e:
             raise PluginError(WRITE_POLICY) from e
         except NotFound as e:
-            detail = e.args[1] if len(e.args) > 1 and e.args[1] else "bad request"
+            detail = detail_of(e)
             raise PluginError(f"RouterOS refused {what}: {detail}") from e
 
     def add(
@@ -127,8 +127,10 @@ class Journal:
         again = {k: text(v) for k, v in row.items() if k not in READ_ONLY and text(v) != ""}
         self.undo.append(("add", menu, again))
 
-    def rollback(self) -> None:
-        """Undoes every write, newest first; one that fails is logged and skipped."""
+    def rollback(self) -> bool:
+        """Undoes every write, newest first; one that fails is logged and
+        skipped (the others are still undone). False when one failed."""
+        ok = True
         for op, path, data in reversed(self.undo):
             try:
                 if op == "remove":
@@ -141,4 +143,6 @@ class Journal:
                     self.c.put(path, data)
             except Exception:
                 log.exception("could not undo %s on %s", op, path)
+                ok = False
         self.undo = []
+        return ok

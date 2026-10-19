@@ -36,12 +36,14 @@ from omini_sdk import (
     WirelessClient,
     log,
 )
+from omini_sdk import optional as sdk_optional
+from omini_sdk.http import settings
 
 from omini_mikrotik import backup as backup_mod
 from omini_mikrotik import forwards, services, wifinets, wireless
 from omini_mikrotik import networks as nets
 from omini_mikrotik import vlans as vlans_mod
-from omini_mikrotik.client import Client, Failed, Forbidden, NotFound
+from omini_mikrotik.client import Client, Forbidden, NotFound
 from omini_mikrotik.common import (
     as_list,
     as_object,
@@ -66,7 +68,7 @@ def client_from(cfg: Config) -> Client:
     url, user, password = cfg.str("url"), cfg.str("username"), cfg.str("password")
     if not url or not user:
         raise PluginError("the address and username are required")
-    return Client(url, user, password, verify_tls=cfg.bool("verify_tls", False))
+    return Client(url, user, password, **settings(cfg))
 
 
 # --- optional data -----------------------------------------------------------
@@ -74,22 +76,13 @@ def client_from(cfg: Config) -> Client:
 
 def optional(what: str, missing: list[str], fn: Callable[[], T], default: T) -> T:
     """Optional data: a missing policy, package or menu, a server error or a
-    timeout never fails the collection (a wrong password or an unreachable
-    device still does)."""
-    try:
-        return fn()
-    except Forbidden:
-        log.warning("no permission to read %s", what)
+    timeout never fails the collection (a wrong password still does); a
+    refused read is listed in ``missing``."""
+    denied: list[str] = []
+    out = sdk_optional(what, fn, default, missing=denied)
+    if denied:
         missing.append(what)
-    except NotFound:
-        log.info("%s not available on this device", what)
-    except Failed as e:
-        log.warning("could not read %s: %s", what, e)
-    except PluginError:
-        raise
-    except Exception:
-        log.exception("could not read %s", what)
-    return default
+    return out
 
 
 # --- interfaces ----------------------------------------------------------------
@@ -1272,6 +1265,13 @@ def apply(cfg: Config, change: Change) -> list[Device]:
             wifinets.wifi_delete(c, j, change.value)
         else:
             raise PluginError(f"this plugin cannot apply {change.kind}")
+    except PluginError as e:
+        if not j.undo:
+            raise  # nothing was written
+        undone = j.rollback()
+        # The SDK's words (as apply_verify says them), so every plugin reads alike.
+        suffix = "(undone)" if undone else "(could not be undone: check it on the device)"
+        raise PluginError(f"{e} {suffix}") from e
     except Exception:
         j.rollback()
         raise

@@ -254,7 +254,9 @@ class FakeRouterOS:
 def routeros(monkeypatch):
     fake = FakeRouterOS()
     monkeypatch.setattr(
-        collect_module, "Client", partial(Client, transport=httpx.MockTransport(fake.handler))
+        collect_module,
+        "Client",
+        partial(Client, transport=httpx.MockTransport(fake.handler), sleep=lambda s: None),
     )
     return fake
 

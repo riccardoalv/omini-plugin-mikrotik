@@ -18,7 +18,7 @@ from typing import Any
 from omini_sdk import log
 from omini_sdk.models import PortForward
 
-from omini_mikrotik.client import Client, Failed, Forbidden, NotFound
+from omini_mikrotik.client import Client, Forbidden, NotFound, Unavailable
 from omini_mikrotik.common import as_list, flag
 
 NAT = "/ip/firewall/nat"
@@ -100,6 +100,6 @@ def port_forwards(c: Client) -> list[PortForward]:
     out = forwards(rows)
     try:
         out += forwards(as_list(c.get(NAT6)))
-    except (Forbidden, NotFound, Failed) as e:  # older RouterOS, IPv6 package off
+    except (Forbidden, NotFound, Unavailable) as e:  # older RouterOS, IPv6 package off
         log.info("no IPv6 NAT table: %s", e)
     return out

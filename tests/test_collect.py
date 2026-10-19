@@ -428,7 +428,9 @@ def test_unreachable(monkeypatch, cfg):
         raise httpx.ConnectError("connection refused", request=request)
 
     transport = httpx.MockTransport(refuse)
-    monkeypatch.setattr(m, "Client", lambda *a, **k: Client(*a, **k, transport=transport))
+    monkeypatch.setattr(
+        m, "Client", lambda *a, **k: Client(*a, **k, transport=transport, sleep=lambda s: None)
+    )
     with pytest.raises(PluginError, match="cannot connect"):
         connection_test(cfg)
 
@@ -453,3 +455,86 @@ def test_parsers():
     assert duration_s("2d03:04:05") == 2 * 86400 + 3 * 3600 + 4 * 60 + 5
     assert duration_s("00:09:57") == 597 and duration_s("") is None and duration_s("never") is None
     assert vlan_ids("10,20,30-32") == [10, 20, 30, 31, 32] and vlan_ids("") == []
+
+
+def test_a_refused_connection_or_a_busy_router_is_asked_again(monkeypatch, routeros, cfg):
+    import httpx
+
+    import omini_mikrotik.collect as m
+    from omini_mikrotik.client import Client
+
+    answers = iter(["refuse", "busy"])
+
+    def flaky(request):
+        what = next(answers, None)
+        if what == "refuse":
+            raise httpx.ConnectError("connection refused", request=request)
+        if what == "busy":
+            return httpx.Response(503)
+        return routeros.handler(request)
+
+    pauses = []
+    transport = httpx.MockTransport(flaky)
+    monkeypatch.setattr(
+        m, "Client", lambda *a, **k: Client(*a, **k, transport=transport, sleep=pauses.append)
+    )
+    [rt] = collect(cfg)
+    assert rt.name and pauses == [1.0, 2.0]
+
+
+def test_the_timeout_and_tls_come_from_the_advanced_fields():
+    from omini_sdk import Config
+
+    from omini_mikrotik.collect import client_from
+
+    c = client_from(
+        Config({"url": "192.168.88.1/rest", "username": "omini", "password": "x", "timeout_s": 5})
+    )
+    assert c.base == "https://192.168.88.1"
+    assert str(c.http.base_url) == "https://192.168.88.1/rest/"
+    assert c.http.timeout.read == 5
+
+
+def test_a_timed_out_add_is_never_sent_again_but_a_read_is():
+    import httpx
+
+    from omini_mikrotik.client import Client, Unavailable
+
+    sent = []
+
+    def slow(request):
+        sent.append(request.method)
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    c = Client(
+        "https://192.168.88.1",
+        "omini",
+        "x",
+        transport=httpx.MockTransport(slow),
+        sleep=lambda s: None,
+    )
+    with pytest.raises(Unavailable, match="did not answer /ip/address in time"):
+        c.put("/ip/address", {"address": "192.168.50.1/24"})
+    assert sent == ["PUT"]
+    with pytest.raises(Unavailable):
+        c.get("/ip/address")
+    assert sent == ["PUT", "GET", "GET"]
+    with pytest.raises(Unavailable):
+        c.patch("/ip/address/*1", {"disabled": "true"})  # PATCH is never retried either
+    assert sent == ["PUT", "GET", "GET", "PATCH"]
+
+
+def test_a_missing_menu_is_not_found():
+    import httpx
+
+    from omini_mikrotik.client import Client, NotFound
+
+    def missing(request):
+        return httpx.Response(
+            400, json={"error": 400, "message": "Bad Request", "detail": "no such command"}
+        )
+
+    c = Client("https://192.168.88.1", "omini", "x", transport=httpx.MockTransport(missing))
+    with pytest.raises(NotFound) as e:
+        c.get("/ipv6/neighbor")
+    assert e.value.resource == "/ipv6/neighbor" and e.value.detail == "no such command"

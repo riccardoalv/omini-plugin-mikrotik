@@ -33,7 +33,7 @@ Role: **router** when the device has a default route and a LAN-side network besi
 
 ## What it changes
 
-Only what you ask from Omini, one change at a time. Every change is **applied, read back and checked**; if RouterOS refuses a step or does not read back as asked, the plugin **undoes the steps it already took** (newest first) and Omini shows the error. RouterOS keeps every change as soon as it is applied (there is no separate saved configuration), so there is no save step. RouterOS's own rollback (*safe mode*) belongs to a terminal session, which the REST API does not have: the plugin's undo takes its place.
+Only what you ask from Omini, one change at a time. Every change is **applied, read back and checked**; if RouterOS refuses a step or does not read back as asked, the plugin **undoes the steps it already took** (newest first) and Omini shows the error, ending "(undone)", or "(could not be undone: check it on the device)" when RouterOS refused a step of the undo (the other steps are still undone). RouterOS keeps every change as soon as it is applied (there is no separate saved configuration), so there is no save step. RouterOS's own rollback (*safe mode*) belongs to a terminal session, which the REST API does not have: the plugin's undo takes its place.
 
 Writes use the REST API's `PUT` (the console's `add`), `PATCH` (`set`), `DELETE` (`remove`) and `POST` for three commands: `<menu>/add` with `place-before` (firewall rules), `/ip/dns/set` and `/tool/wol`.
 
@@ -144,6 +144,7 @@ Omini keeps a history of the configuration (it never restores it). The plugin's 
 
 ## Requirements
 
+- **Omini 1.7 or later** (the plugin uses the SDK toolkit it ships).
 - **RouterOS 7.1 or later** (the REST API does not exist on RouterOS 6).
 - The **www-ssl** service enabled, with a certificate (the REST API is served by the web server). Plain HTTP (`www`) also works but sends the password unencrypted: use it only on a trusted network.
 
@@ -178,7 +179,8 @@ Then, in Omini, **Integrations → Add → MikroTik RouterOS**:
 | Address | `https://<router IP>` (e.g. `https://192.168.88.1`) |
 | Username | `omini` |
 | Password | the user's password (stored encrypted, never logged) |
-| Verify the TLS certificate | off for the self-signed certificate above; on if the router has a trusted one |
+| Verify the TLS certificate (Advanced) | off for the self-signed certificate above; on if the router has a trusted one |
+| Timeout (Advanced) | seconds to wait for each answer of the router (15 by default); a refused connection or a busy router (429, 503) is asked again |
 
 **Test connection** says which parts the user cannot read, if any.
 
@@ -221,7 +223,7 @@ A collection only reads: every request is a `GET` to `https://<router>/rest/<men
 | `/interface/wireless`, `/interface/wireless/registration-table` | Wi-Fi clients (legacy `wireless` package) |
 | `/interface/wifi`, `/interface/wifi/cap`, `POST /interface/wifi/monitor` (`once`); `/interface/wireless`, `/interface/wireless/cap`, `POST /interface/wireless/monitor` (`once`) | radios: `channel.band`/`band`, `channel.frequency`/`frequency`, `channel.width`/`channel-width`, `configuration.mode`/`mode`, `configuration.manager` and the CAP (CAPsMAN), the monitor's `channel` and `tx-power` | [WiFi](https://help.mikrotik.com/docs/spaces/ROS/pages/224559120/WiFi), [Wireless Interface](https://help.mikrotik.com/docs/spaces/ROS/pages/8978446/Wireless+Interface) | [Wireless Interface](https://help.mikrotik.com/docs/spaces/ROS/pages/8978446/Wireless+Interface) |
 
-Only `/system/resource` is required. Every other menu is optional: one that is missing (package not installed), forbidden or failing is skipped and the rest of the collection goes on. Requests time out after 10 s.
+Only `/system/resource` is required. Every other menu is optional: one that is missing (package not installed), forbidden, failing (a server error) or timing out is skipped and the rest of the collection goes on. Requests time out after 15 s (the *Timeout* field); a refused connection or a busy answer (429, 503) is asked again twice, after 1 and 2 seconds, and a read that timed out once more (an add, `PUT`, that timed out is never sent again: RouterOS may have added the item). A wrong username or password always fails the run.
 
 Mapping notes:
 

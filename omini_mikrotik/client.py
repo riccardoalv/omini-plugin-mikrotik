@@ -1,4 +1,6 @@
-"""Minimal RouterOS v7 REST API client (HTTP basic auth).
+"""RouterOS v7 REST API client (HTTP basic auth), on the SDK's HTTP client:
+timeouts, retries when the router refuses a connection or is busy, and the
+SDK's errors (``Unauthorized``, ``Forbidden``, ``NotFound``, ``Unavailable``).
 
 https://help.mikrotik.com/docs/spaces/ROS/pages/47579162/REST+API
 Every value in a reply is a string, even numbers and booleans.
@@ -7,111 +9,135 @@ Every value in a reply is a string, even numbers and booleans.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 from omini_sdk import PluginError
+from omini_sdk import http as sdk_http
+from omini_sdk.http import Client as HttpClient
+from omini_sdk.http import Forbidden, HttpError, NotFound, Unauthorized, Unavailable
+
+__all__ = ["Client", "Forbidden", "HttpError", "NotFound", "Unavailable", "detail_of"]
 
 
-class Forbidden(Exception):
-    """The user's group lacks a policy for this menu."""
-
-
-class NotFound(Exception):
-    """The menu does not exist on this device (package or feature missing)."""
-
-
-class Failed(PluginError):
-    """RouterOS did not answer in time or answered a server error (5xx): a
-    required read fails with it, an optional one is skipped."""
-
-
-class Client:
+class Client(HttpClient):
     def __init__(
         self,
         url: str,
         username: str,
         password: str,
         verify_tls: bool = False,
-        timeout: float = 10,
+        timeout: float = 15,
         transport: httpx.BaseTransport | None = None,
+        sleep: Callable[[float], None] | None = None,
     ):
-        url = url.strip().rstrip("/")
-        if not url.startswith(("https://", "http://")):
-            url = "https://" + url
-        if url.endswith("/rest"):
-            url = url[: -len("/rest")]
-        self.base = url
-        self.http = httpx.Client(
-            base_url=url + "/rest",
+        super().__init__(
+            url,
+            name="RouterOS",
+            api="/rest",
+            strip=("/rest",),
             auth=(username, password),
-            verify=verify_tls,
+            verify_tls=verify_tls,
             timeout=timeout,
-            headers={"Accept": "application/json", "User-Agent": "omini-plugin-mikrotik"},
+            user_agent="omini-plugin-mikrotik",
+            unauthorized="RouterOS rejected the username or password",
             transport=transport,
+            sleep=sleep,
         )
 
-    def close(self) -> None:
-        self.http.close()
-
-    def get(self, path: str) -> Any:
+    def get(self, path: str) -> Any:  # type: ignore[override]
         """Reads a menu, e.g. ``/interface`` (a list) or ``/system/resource`` (one object)."""
-        return self._send("GET", path)
+        return self.request("GET", path)
 
-    def post(self, path: str, body: dict[str, Any]) -> Any:
+    def post(self, path: str, body: dict[str, Any]) -> Any:  # type: ignore[override]
         """Runs a console command. A collection only sends read-only ones
         (``/interface/ethernet/monitor``, ``/interface/bridge/monitor`` and
         ``/interface/wifi/monitor`` or ``/interface/wireless/monitor``, with
         ``once``), a backup ``/execute`` of ``/export terse``; a change Omini
         asked for may send ``add`` (with ``place-before``), ``/ip/dns/set`` or
         ``/tool/wol``."""
-        return self._send("POST", path, body)
+        return self.request("POST", path, json=body)
 
-    def patch(self, path: str, body: dict[str, Any]) -> Any:
+    def patch(self, path: str, body: dict[str, Any]) -> Any:  # type: ignore[override]
         """Sets properties of one item, e.g. ``/interface/ethernet/*1`` with
         ``{"disabled": "true"}`` (the console's ``set``): the properties not
         sent stay as they are. Used only to apply a change Omini asked for."""
-        return self._send("PATCH", path, body)
+        return self.request("PATCH", path, json=body)
 
-    def put(self, path: str, body: dict[str, Any]) -> Any:
+    def put(self, path: str, body: dict[str, Any]) -> Any:  # type: ignore[override]
         """Adds an item to a menu (the console's ``add``); RouterOS answers the
         new item with its ``.id``. Used only to apply a change Omini asked for."""
-        return self._send("PUT", path, body)
+        return self.request("PUT", path, json=body)
 
-    def delete(self, path: str) -> Any:
+    def delete(self, path: str) -> Any:  # type: ignore[override]
         """Removes one item, e.g. ``/ip/address/*3`` (the console's ``remove``).
         Used only to apply a change Omini asked for."""
-        return self._send("DELETE", path)
+        return self.request("DELETE", path)
 
-    def _send(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+    def send(self, method: str, path: str, **kw: Any) -> httpx.Response:
+        # RouterOS's PUT is the console's ``add``: one that timed out may
+        # have added the item, so (like a POST) it is never sent again.
+        idempotent = sdk_http.IDEMPOTENT
+        if method.upper() == "PUT":
+            sdk_http.IDEMPOTENT = idempotent - {"PUT"}
         try:
-            r = self.http.request(method, path, json=body)
-        except httpx.ConnectError as e:
-            raise PluginError(f"cannot connect to {self.base}: {e}") from e
-        except httpx.TimeoutException as e:
-            raise Failed(f"{self.base} did not answer {path} in time") from e
-        except httpx.HTTPError as e:
-            raise PluginError(f"request to {self.base} failed: {e}") from e
-        if r.status_code == 401:
-            raise PluginError("RouterOS rejected the username or password")
+            return super().send(method, path, **kw)
+        except Unavailable as e:
+            if isinstance(e.__cause__, httpx.TimeoutException):
+                raise Unavailable(
+                    f"{self.base} did not answer {path} in time", method=method, resource=path
+                ) from e.__cause__
+            raise
+        finally:
+            sdk_http.IDEMPOTENT = idempotent
+
+    def detail(self, r: httpx.Response) -> str:
+        return error_detail(r) or super().detail(r)
+
+    def check(self, r: httpx.Response, method: str, path: str) -> None:
+        status = r.status_code
+        if status < 400:
+            return
         detail = error_detail(r)
-        if r.status_code == 403 or "permission" in detail.lower():
-            raise Forbidden(path, detail)
-        if r.status_code in (400, 404):
+        where = {"status": status, "method": method, "resource": path}
+        if status == 401:
+            raise Unauthorized(self.unauthorized, **where)
+        if status == 403 or "permission" in detail.lower():
+            e: HttpError = Forbidden(
+                f"the RouterOS user may not use {path}" + (f" ({detail})" if detail else ""),
+                **where,
+            )
+        elif status in (400, 404, 410):
             # 400 is also what RouterOS answers for a menu this version lacks
-            # ("no such command or directory").
-            raise NotFound(path, detail)
-        if r.status_code >= 400:
-            raise Failed(f"RouterOS answered {r.status_code} for {path}")
+            # ("no such command or directory"), and for a refused write.
+            e = NotFound(
+                f"RouterOS has no {path}"
+                if method == "GET"
+                else f"RouterOS refused {method} {path}: {detail or 'bad request'}",
+                **where,
+            )
+        else:
+            super().check(r, method, path)
+            return
+        e.detail = detail  # type: ignore[attr-defined]
+        raise e
+
+    def json(self, r: httpx.Response, path: str = "") -> Any:
         if not r.content:
             return None
         try:
             return r.json()
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise PluginError(
                 f"{self.base} did not answer with JSON: is it a RouterOS v7 address "
                 "with the www-ssl service enabled?"
             ) from e
+
+
+def detail_of(e: BaseException, default: str = "bad request") -> str:
+    """RouterOS's own words for a refused request (its ``detail``)."""
+    return getattr(e, "detail", "") or default
 
 
 def error_detail(r: httpx.Response) -> str:

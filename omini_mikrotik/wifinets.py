@@ -24,11 +24,14 @@ from __future__ import annotations
 from typing import Any
 
 from omini_sdk import Device, PluginError, WifiNetwork, log
+from omini_sdk import optional as sdk_optional
 
-from omini_mikrotik.client import Client, Failed, Forbidden, NotFound
+from omini_mikrotik.client import Client, Forbidden, NotFound, Unavailable
 from omini_mikrotik.common import as_list, counter, flag, names
 from omini_mikrotik.journal import Journal
 from omini_mikrotik.wireless import WIFI, Package, read_packages, text
+
+SKIPPED = object()  # an optional read that was skipped
 
 BRIDGE_PORTS = "/interface/bridge/port"
 AP_MODES = ("ap", "")  # the wifi package; an extra SSID may leave the mode to its profile
@@ -60,7 +63,7 @@ class Profiles:
         for kind in wanted:
             try:
                 rows = as_list(c.get(f"{pkg.menu}/{kind}"))
-            except (Forbidden, NotFound, Failed) as e:
+            except (Forbidden, NotFound, Unavailable) as e:
                 log.info("no %s/%s: %s", pkg.menu, kind, e)
                 rows = []
             self.menus[kind] = {text(r.get("name")): r for r in rows if r.get("name")}
@@ -135,13 +138,8 @@ def networks(c: Client, pkgs: list[Package]) -> list[WifiNetwork]:
 def networks_field(c: Client, pkgs: list[Package]) -> dict[str, Any]:
     if "wifi_networks" not in Device.model_fields or not any(p.rows for p in pkgs):
         return {}
-    try:
-        return {"wifi_networks": networks(c, pkgs) or None}
-    except PluginError:
-        raise
-    except Exception:
-        log.exception("could not read the Wi-Fi networks")
-        return {}
+    out = sdk_optional("the Wi-Fi networks", lambda: networks(c, pkgs) or None, SKIPPED)
+    return {} if out is SKIPPED else {"wifi_networks": out}
 
 
 # --- changes -------------------------------------------------------------------

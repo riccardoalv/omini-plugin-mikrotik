@@ -23,9 +23,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from omini_sdk import Device, PluginError, log
+from omini_sdk.changes import apply_verify
 from omini_sdk.models import Radio
 
-from omini_mikrotik.client import Client, Failed, Forbidden, NotFound
+from omini_mikrotik.client import Client, Forbidden, NotFound, Unavailable
 from omini_mikrotik.common import as_list, as_object, flag, names, number
 from omini_mikrotik.journal import Journal
 
@@ -168,7 +169,7 @@ def read_packages(c: Client) -> list[Package]:
         except NotFound:
             continue
         cap: dict[str, Any] = {}
-        with contextlib.suppress(Forbidden, NotFound, Failed):
+        with contextlib.suppress(Forbidden, NotFound, Unavailable):
             cap = as_object(c.get(f"{menu}/cap"))
         out.append(Package(menu, rows, cap))
     return out
@@ -183,7 +184,7 @@ def monitor(c: Client, menu: str, name: str) -> dict[str, Any]:
 def try_monitor(c: Client, menu: str, name: str) -> dict[str, Any] | None:
     try:
         return monitor(c, menu, name)
-    except (Forbidden, NotFound, Failed) as e:
+    except (Forbidden, NotFound, Unavailable) as e:
         log.info("no monitor of %s: %s", name, e)
         return None
 
@@ -269,10 +270,13 @@ def set_channel(c: Client, j: Journal, value: Any) -> None:
         raise PluginError(f"RouterOS did not set {name} to channel {ch}")
     if flag(after.get("disabled")) or m is None:
         return  # a radio that is off, or without a monitor: its setting is all there is
-    for i in range(VERIFY_READS):
-        now = monitor_freq(try_monitor(c, pkg.menu, name) or {})
-        if now == freq:
-            return
-        if i < VERIFY_READS - 1:
-            SLEEP(1)
-    raise PluginError(f"{name} did not come up on channel {ch}")
+    # Read the monitor (once a second, VERIFY_READS times) until the radio is
+    # on it; the Journal undoes the change in apply() when it is not.
+    apply_verify(
+        lambda: None,
+        lambda: monitor_freq(try_monitor(c, pkg.menu, name) or {}) == freq,
+        timeout=VERIFY_READS - 1,
+        interval=1,
+        message=f"{name} did not come up on channel {ch}",
+        sleep=lambda s: SLEEP(s),
+    )

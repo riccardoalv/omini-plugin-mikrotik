@@ -60,4 +60,11 @@ fields:
     type: bool
     label: Verify the TLS certificate
     default: false
+    group: Advanced
     help: RouterOS uses a self-signed certificate unless you installed a trusted one.
+  - key: timeout_s
+    type: int
+    label: Timeout (seconds)
+    default: 15
+    group: Advanced
+    help: How long to wait for each answer of the router.

@@ -37,7 +37,7 @@ from typing import Any
 
 from omini_sdk import DnsRecord, PausedDevice, PluginError, log
 
-from omini_mikrotik.client import Client, Forbidden, NotFound
+from omini_mikrotik.client import Client, Forbidden, NotFound, detail_of
 from omini_mikrotik.common import as_list, flag
 from omini_mikrotik.journal import Journal
 from omini_mikrotik.networks import (
@@ -243,7 +243,7 @@ def wol_send(c: Client, st: State, value: dict[str, Any]) -> None:
             "(/user group set <group> policy=read,write,api,rest-api)"
         ) from e
     except NotFound as e:
-        detail = e.args[1] if len(e.args) > 1 and e.args[1] else "bad request"
+        detail = detail_of(e)
         raise PluginError(f"RouterOS refused Wake-on-LAN on {iface}: {detail}") from e
 
 

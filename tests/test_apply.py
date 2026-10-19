@@ -51,9 +51,33 @@ def test_enables_a_renamed_port(routeros, cfg):
 
 def test_an_error_when_routeros_did_not_take_it(routeros, cfg):
     routeros.ignore_changes = True
-    with pytest.raises(PluginError, match="did not apply the change to ether2"):
+    with pytest.raises(PluginError, match=r"did not apply the change to ether2 \(undone\)"):
         apply(cfg, change())
     assert ethernet(routeros, "ether2")["disabled"] == "false"
+
+
+def test_says_when_the_change_could_not_be_undone(routeros, cfg):
+    import httpx
+
+    routeros.ignore_changes = True
+    write = routeros.write
+    patches = []
+
+    def refuse_the_undo(method, path, body):
+        patches.append(path)
+        if len(patches) > 1:
+            return httpx.Response(500, json={"error": 500, "message": "Internal Error"})
+        return write(method, path, body)
+
+    routeros.write = refuse_the_undo
+    with pytest.raises(PluginError, match=r"could not be undone: check it on the device"):
+        apply(cfg, change())
+
+
+def test_nothing_written_is_not_undone(routeros, cfg):
+    with pytest.raises(PluginError) as e:
+        apply(cfg, change("ether12"))
+    assert "undone" not in str(e.value)
 
 
 def test_nothing_is_sent_when_the_port_is_already_so(routeros, cfg):
