@@ -14,7 +14,6 @@ from typing import Any
 
 import httpx
 from omini_sdk import PluginError
-from omini_sdk import http as sdk_http
 from omini_sdk.http import Client as HttpClient
 from omini_sdk.http import Forbidden, HttpError, NotFound, Unauthorized, Unavailable
 
@@ -44,6 +43,9 @@ class Client(HttpClient):
             unauthorized="RouterOS rejected the username or password",
             transport=transport,
             sleep=sleep,
+            # RouterOS's PUT is the console's `add`: one that timed out may have
+            # added the item, so (like a POST) it is never sent again.
+            idempotent={"GET", "HEAD", "OPTIONS", "DELETE"},
         )
 
     def get(self, path: str) -> Any:  # type: ignore[override]
@@ -76,11 +78,6 @@ class Client(HttpClient):
         return self.request("DELETE", path)
 
     def send(self, method: str, path: str, **kw: Any) -> httpx.Response:
-        # RouterOS's PUT is the console's ``add``: one that timed out may
-        # have added the item, so (like a POST) it is never sent again.
-        idempotent = sdk_http.IDEMPOTENT
-        if method.upper() == "PUT":
-            sdk_http.IDEMPOTENT = idempotent - {"PUT"}
         try:
             return super().send(method, path, **kw)
         except Unavailable as e:
@@ -89,8 +86,6 @@ class Client(HttpClient):
                     f"{self.base} did not answer {path} in time", method=method, resource=path
                 ) from e.__cause__
             raise
-        finally:
-            sdk_http.IDEMPOTENT = idempotent
 
     def detail(self, r: httpx.Response) -> str:
         return error_detail(r) or super().detail(r)
